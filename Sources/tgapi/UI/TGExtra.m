@@ -10,20 +10,20 @@
 @property (nonatomic, strong) NSString *cacheSize;
 @end
 
-@implementation TGExtra 
+@implementation TGExtra
 
 - (void)viewDidLoad {
-	
+
 	[self setupTableView];
 	[self setupIconAsHeader];
 	[self setupApplyButton];
 	self.title = @"TGExtra";
-	
+
 	[[NSNotificationCenter defaultCenter] addObserver:self
                                              selector:@selector(didChangeLanguage)
                                                  name:@"LanguageChangedNotification"
                                                object:nil];
-	
+
 	[[NSNotificationCenter defaultCenter] addObserver:self
                                              selector:@selector(didChangeFakeLocation)
                                                  name:@"TGExtraLocationChanged"
@@ -44,9 +44,9 @@
 	self.tableView.delegate = self;
 	self.tableView.dataSource = self;
 	self.tableView.translatesAutoresizingMaskIntoConstraints = NO;
-	
+
 	[self.view addSubview:self.tableView];
-	
+
 	[NSLayoutConstraint activateConstraints:@[
     	[self.tableView.topAnchor constraintEqualToAnchor:self.view.topAnchor],
 		[self.tableView.leadingAnchor constraintEqualToAnchor:self.view.leadingAnchor],
@@ -57,7 +57,7 @@
 
 - (void)setupIconAsHeader {
     UIView *logoContainer = [[UIView alloc] initWithFrame:CGRectMake(0, 0, self.tableView.frame.size.width, 100)];
-    
+
     // Logo Image
 	//NSString *imagePath = [[NSBundle mainBundle].bundlePath stringByAppendingPathComponent:@"Choco.png"];
 	NSData *imageData = [[NSData alloc] initWithBase64EncodedString:CHOCOPNG options:NSDataBase64DecodingIgnoreUnknownCharacters];
@@ -65,9 +65,9 @@
     iconView.translatesAutoresizingMaskIntoConstraints = NO;
     iconView.layer.cornerRadius = 100 / 4;
 	iconView.userInteractionEnabled = YES;
-    iconView.clipsToBounds = YES; 
+    iconView.clipsToBounds = YES;
     iconView.contentMode = UIViewContentModeScaleAspectFill;
-	
+
     [logoContainer addSubview:iconView];
 
     [NSLayoutConstraint activateConstraints:@[
@@ -77,7 +77,7 @@
         [iconView.heightAnchor constraintEqualToConstant:100]
     ]];
 
-    self.tableView.tableHeaderView = logoContainer; 
+    self.tableView.tableHeaderView = logoContainer;
 }
 
 - (void)setupApplyButton {
@@ -95,7 +95,7 @@
     UIAlertController *alert = [UIAlertController alertControllerWithTitle:TGLoc(@"APPLY")
                                                                    message:TGLoc(@"APPLY_CHANGES")
                                                             preferredStyle:UIAlertControllerStyleAlert];
-    
+
     UIAlertAction *okAction = [UIAlertAction actionWithTitle:TGLoc(@"OK")
                                                    style:UIAlertActionStyleDefault
                                                  handler:^(UIAlertAction * _Nonnull action) {
@@ -104,12 +104,12 @@
 			exit(0);
 		});
 	}];
-	
+
     [alert addAction:okAction];
-    
+
     UIAlertAction *cancelAction = [UIAlertAction actionWithTitle:TGLoc(@"CANCEL")
                                                            style:UIAlertActionStyleCancel
-                                                         handler:nil]; 
+                                                         handler:nil];
     [alert addAction:cancelAction];
     [self presentViewController:alert animated:YES completion:nil];
 }
@@ -147,7 +147,7 @@ typedef NS_ENUM(NSInteger, TABLE_VIEW_SECTIONS) {
 
 - (NSInteger)tableView:(UITableView *)tableView numberOfRowsInSection:(NSInteger)section {
 	switch (section) {
-		case GHOST_MODE: 
+		case GHOST_MODE:
 		   return 17;
 		case READ_RECEIPT:
 		   return 2;
@@ -168,9 +168,9 @@ typedef NS_ENUM(NSInteger, TABLE_VIEW_SECTIONS) {
 }
 
 - (NSString *)tableView:(UITableView *)tableView titleForHeaderInSection:(NSInteger)section {
-	
+
 	switch (section) {
-		case GHOST_MODE: 
+		case GHOST_MODE:
 		   return TGLoc(@"GHOST_MODE_SECTION_HEADER");
 		case READ_RECEIPT:
 		   return TGLoc(@"READ_RECEIPT_SECTION_HEADER");
@@ -194,8 +194,8 @@ typedef NS_ENUM(NSInteger, TABLE_VIEW_SECTIONS) {
 	UITableViewCell *switchCell = [tableView dequeueReusableCellWithIdentifier:@"switchCell"];
 	if (!switchCell) {
 		switchCell = [[UITableViewCell alloc] initWithStyle:UITableViewCellStyleSubtitle reuseIdentifier:@"switchCell"];
-	} 
-	
+	}
+
 	return switchCell;
 }
 
@@ -203,18 +203,18 @@ typedef NS_ENUM(NSInteger, TABLE_VIEW_SECTIONS) {
 	UITableViewCell *normalCell = [tableView dequeueReusableCellWithIdentifier:@"normalCell"];
 	if (!normalCell) {
 		normalCell = [[UITableViewCell alloc] initWithStyle:UITableViewCellStyleSubtitle reuseIdentifier:@"normalCell"];
-	} 
-	
+	}
+
 	return normalCell;
 }
 
 - (UITableViewCell *)tableView:(UITableView *)tableView cellForRowAtIndexPath:(NSIndexPath *)indexPath {
 	UITableViewCell *cell;
-	
+
 	if (indexPath.section == 0) { // GHOST MOODE
 		cell = [self switchCellFromTableView:tableView];
 		cell.imageView.image = nil;
-	
+
 		if (indexPath.row == 0) {
 			cell.textLabel.text = TGLoc(@"DISABLE_ONLINE_STATUS_TITLE");
 			cell.detailTextLabel.text = TGLoc(@"DISABLE_ONLINE_STATUS_SUBTITLE");
@@ -283,27 +283,27 @@ typedef NS_ENUM(NSInteger, TABLE_VIEW_SECTIONS) {
 			cell.textLabel.text = TGLoc(@"DISABLE_EMOJI_ACKNOWLEDGEMENT_STATUS_TITLE");
 			cell.detailTextLabel.text = TGLoc(@"DISABLE_EMOJI_ACKNOWLEDGEMENT_STATUS_SUBTITLE");
 		}
-		
-		UISwitch *toggle = (UISwitch *)cell.accessoryView;    
+
+		UISwitch *toggle = (UISwitch *)cell.accessoryView;
 		if (!toggle || ![toggle isKindOfClass:[UISwitch class]]) {
 			toggle = [[UISwitch alloc] init];
 		}
-		
+
 		NSString *switchKey = [self switchKeyForIndexPath:indexPath];
 		toggle.on = [[NSUserDefaults standardUserDefaults] boolForKey:switchKey];
 		[toggle addTarget:self action:@selector(switchChanged:) forControlEvents:UIControlEventValueChanged];
 		toggle.tag = 1000 + (indexPath.section *1000) + indexPath.row;
 		cell.accessoryView = toggle;
-		
+
 		cell.textLabel.numberOfLines = 0;
 		cell.detailTextLabel.numberOfLines = 0;
 		return cell;
-		
-	} 
+
+	}
 	else if (indexPath.section == 1) { // Read Receipts
 		cell = [self switchCellFromTableView:tableView];
 		cell.imageView.image = nil;
-	
+
 		if (indexPath.row == 0) {
 			cell.textLabel.text = TGLoc(@"DISABLE_MESSAGE_READ_RECEIPT_TITLE");
 			cell.detailTextLabel.text = TGLoc(@"DISABLE_MESSAGE_READ_RECEIPT_SUBTITLE");
@@ -312,18 +312,18 @@ typedef NS_ENUM(NSInteger, TABLE_VIEW_SECTIONS) {
 			cell.textLabel.text = TGLoc(@"DISABLE_STORY_READ_RECEIPT_TITLE");
 			cell.detailTextLabel.text = TGLoc(@"DISABLE_STORY_READ_RECEIPT_SUBTITLE");
 		}
-		
-		UISwitch *toggle = (UISwitch *)cell.accessoryView;    
+
+		UISwitch *toggle = (UISwitch *)cell.accessoryView;
 		if (!toggle || ![toggle isKindOfClass:[UISwitch class]]) {
 			toggle = [[UISwitch alloc] init];
 		}
-		
+
 		NSString *switchKey = [self switchKeyForIndexPath:indexPath];
 		toggle.on = [[NSUserDefaults standardUserDefaults] boolForKey:switchKey];
 		[toggle addTarget:self action:@selector(switchChanged:) forControlEvents:UIControlEventValueChanged];
 		toggle.tag = 1000 + (indexPath.section *1000) + indexPath.row;
 		cell.accessoryView = toggle;
-		
+
 		cell.textLabel.numberOfLines = 0;
 		cell.detailTextLabel.numberOfLines = 0;
 		return cell;
@@ -331,7 +331,7 @@ typedef NS_ENUM(NSInteger, TABLE_VIEW_SECTIONS) {
 	else if (indexPath.section == 2) { // MISC
 		cell = [self switchCellFromTableView:tableView];
 		cell.imageView.image = nil;
-		
+
 		if (indexPath.row == 0) {
 			cell.textLabel.text = TGLoc(@"DISABLE_ALL_ADS_TITLE");
 			cell.detailTextLabel.text = TGLoc(@"DISABLE_ALL_ADS_SUBTITLE");
@@ -340,146 +340,146 @@ typedef NS_ENUM(NSInteger, TABLE_VIEW_SECTIONS) {
 			cell.textLabel.text = TGLoc(@"ENABLE_SAVING_PROTECTED_CONTENT_TITLE");
 			cell.detailTextLabel.text = TGLoc(@"ENABLE_SAVING_PROTECTED_CONTENT_SUBTITLE");
 		}
-		
-		UISwitch *toggle = (UISwitch *)cell.accessoryView;    
+
+		UISwitch *toggle = (UISwitch *)cell.accessoryView;
 		if (!toggle || ![toggle isKindOfClass:[UISwitch class]]) {
 			toggle = [[UISwitch alloc] init];
 		}
-		
+
 		NSString *switchKey = [self switchKeyForIndexPath:indexPath];
 		toggle.on = [[NSUserDefaults standardUserDefaults] boolForKey:switchKey];
 		[toggle addTarget:self action:@selector(switchChanged:) forControlEvents:UIControlEventValueChanged];
 		toggle.tag = 1000 + (indexPath.section *1000) + indexPath.row;
 		cell.accessoryView = toggle;
-		
+
 		cell.textLabel.numberOfLines = 0;
 		cell.detailTextLabel.numberOfLines = 0;
 		return cell;
-		
+
 	}
 	if (indexPath.section == 3) { // File Picker Fix
 		if (indexPath.row ==0) { //Enable File Picker Fix
 			cell = [self switchCellFromTableView:tableView];
-			
+
 			cell.imageView.image = [UIImage systemImageNamed:@"folder.fill.badge.gear"];
-			cell.imageView.tintColor = [self dynamicColorBW]; 
+			cell.imageView.tintColor = [self dynamicColorBW];
 			cell.textLabel.text = TGLoc(@"FIX_FILE_PICKER_TITLE");
 			cell.detailTextLabel.text = TGLoc(@"FIX_FILE_PICKER_SUBTITLE");
-			
-			UISwitch *toggle = (UISwitch *)cell.accessoryView;    
+
+			UISwitch *toggle = (UISwitch *)cell.accessoryView;
 			if (!toggle || ![toggle isKindOfClass:[UISwitch class]]) {
 				toggle = [[UISwitch alloc] init];
 			}
-			
+
 			NSString *switchKey = [self switchKeyForIndexPath:indexPath];
 			toggle.on = [[NSUserDefaults standardUserDefaults] boolForKey:switchKey];
 			[toggle addTarget:self action:@selector(switchChanged:) forControlEvents:UIControlEventValueChanged];
 			toggle.tag = 1000 + (indexPath.section *1000) + indexPath.row;
 			cell.accessoryView = toggle;
-			
+
 			cell.textLabel.numberOfLines = 0;
 			cell.detailTextLabel.numberOfLines = 0;
 			return cell;
 		}
-		
+
 		if (indexPath.row == 1) {
 			cell = [self normalCellFromTableView:tableView];
 			cell.imageView.image = nil;
-			
+
 		    cell.textLabel.text = TGLoc(@"CLEAR_FILE_PICKER_CACHE_TITLE");
 		    cell.detailTextLabel.text = TGLoc(@"CLEAR_FILE_PICKER_CACHE_SUBTITLE");
 		    cell.imageView.image = [UIImage systemImageNamed:@"trash"];
-		    cell.imageView.tintColor = [UIColor redColor]; 
-		
+		    cell.imageView.tintColor = [UIColor redColor];
+
 		    // Initially show a UIActivityIndicator
 		    UIActivityIndicatorView *loadingIcon = [[UIActivityIndicatorView alloc] initWithActivityIndicatorStyle:UIActivityIndicatorViewStyleMedium];
 		    [loadingIcon startAnimating];
 		    cell.accessoryView = loadingIcon;
-		
+
 		    dispatch_async(dispatch_get_global_queue(DISPATCH_QUEUE_PRIORITY_HIGH, 0), ^{
 				if (!self.cacheSize) {
 					self.cacheSize = [self sizeOfUglyFileFixDirectory];
 				}
-				
+
 		        dispatch_async(dispatch_get_main_queue(), ^{
 					UITableViewCell *currentCell = [tableView cellForRowAtIndexPath:indexPath];
 					if (currentCell == cell) {
 						UILabel *sizeLabel = [[UILabel alloc] init];
 						sizeLabel.text = self.cacheSize;
-						cell.accessoryView = sizeLabel; 
-						
+						cell.accessoryView = sizeLabel;
+
 						[sizeLabel sizeToFit];
 					}
 		        });
 		    });
-			
+
 			cell.textLabel.numberOfLines = 0;
 			cell.detailTextLabel.numberOfLines = 0;
 			return cell;
 		}
 	}
-	
+
 	if (indexPath.section == 4) { // Fake Location
-		if (indexPath.row ==0) { 
+		if (indexPath.row ==0) {
 			cell = [self switchCellFromTableView:tableView];
-			
+
 			cell.imageView.image = [UIImage systemImageNamed:@"location.fill"];
-			cell.imageView.tintColor = [self dynamicColorBW]; 
+			cell.imageView.tintColor = [self dynamicColorBW];
 			cell.textLabel.text = TGLoc(@"ENABLE_FAKE_LOCATION_TITLE");
 			cell.detailTextLabel.text = TGLoc(@"ENABLE_FAKE_LOCATION_SUBTITLE");
-			
-			UISwitch *toggle = (UISwitch *)cell.accessoryView;    
+
+			UISwitch *toggle = (UISwitch *)cell.accessoryView;
 			if (!toggle || ![toggle isKindOfClass:[UISwitch class]]) {
 				toggle = [[UISwitch alloc] init];
 			}
-			
+
 			NSString *switchKey = [self switchKeyForIndexPath:indexPath];
 			toggle.on = [[NSUserDefaults standardUserDefaults] boolForKey:switchKey];
 			[toggle addTarget:self action:@selector(switchChanged:) forControlEvents:UIControlEventValueChanged];
 			toggle.tag = 1000 + (indexPath.section *1000) + indexPath.row;
 			cell.accessoryView = toggle;
 		}
-		
-		if (indexPath.row == 1) { 
+
+		if (indexPath.row == 1) {
 			cell = [self normalCellFromTableView:tableView];
-			
+
 			cell.imageView.image = [UIImage systemImageNamed:@"location.fill"];
-			cell.imageView.tintColor = [self dynamicColorBW]; 
+			cell.imageView.tintColor = [self dynamicColorBW];
 			cell.textLabel.text = TGLoc(@"SELECT_FAKE_LOCATION_TITLE");
-			
+
 			NSUserDefaults *defaults = [NSUserDefaults standardUserDefaults];
 			CGFloat savedLongitude = [defaults floatForKey:FAKE_LONGITUDE_KEY];
 			CGFloat savedLatitude = [defaults floatForKey:FAKE_LATITUDE_KEY];
-			
+
 			NSString *savedCord = savedCord = [NSString stringWithFormat:@"lon :%f\nlat :%f", savedLongitude ? : 0, savedLatitude ? : 0];
-			
+
 			cell.textLabel.numberOfLines = 0;
 			cell.detailTextLabel.text = savedCord;
 		}
 		cell.detailTextLabel.numberOfLines = 0;
 		return cell;
 	}
-	
+
 	if (indexPath.section == 5) { // Language
 		cell = [self normalCellFromTableView:tableView];
 		if (indexPath.row == 0) {
 			cell.textLabel.text = @"Change Language";
 			cell.detailTextLabel.text = @"";
 			cell.imageView.image = [UIImage systemImageNamed:@"globe"];
-			cell.imageView.tintColor = [self dynamicColorBW]; 
+			cell.imageView.tintColor = [self dynamicColorBW];
 			cell.imageView.layer.cornerRadius = 40/8;
 			cell.imageView.layer.masksToBounds = YES;
 			cell.accessoryView = nil;
-			
+
 			cell.textLabel.numberOfLines = 0;
 			cell.detailTextLabel.numberOfLines = 0;
 			return cell;
-		} 
+		}
 	}
-	
+
 	if (indexPath.section == 6) { // Credits
 		cell = [self normalCellFromTableView:tableView];
-		
+
 		if (indexPath.row == 0) {
 			cell.textLabel.text = @"Chocolate Fluffy (Dumb Whore)";
 			cell.detailTextLabel.text = @"Developer";
@@ -490,12 +490,12 @@ typedef NS_ENUM(NSInteger, TABLE_VIEW_SECTIONS) {
 			cell.imageView.layer.masksToBounds = YES;
 			cell.accessoryView = nil;
 
-		} 
+		}
 		else if (indexPath.row == 1) {
 			cell.textLabel.text = TGLoc(@"DISCLAIMER");
 			cell.detailTextLabel.text = @"A note from whore";
 			cell.imageView.image = [UIImage systemImageNamed:@"note.text"];
-			cell.imageView.tintColor = [self dynamicColorBW]; 
+			cell.imageView.tintColor = [self dynamicColorBW];
 			cell.accessoryView = nil;
 			cell.detailTextLabel.textColor = [UIColor lightGrayColor];
 		}
@@ -503,7 +503,7 @@ typedef NS_ENUM(NSInteger, TABLE_VIEW_SECTIONS) {
 		cell.detailTextLabel.numberOfLines = 0;
 		return cell;
 	}
-	
+
     return cell;
 }
 
@@ -511,31 +511,31 @@ typedef NS_ENUM(NSInteger, TABLE_VIEW_SECTIONS) {
 
 - (void)tableView:(UITableView *)tableView didSelectRowAtIndexPath:(NSIndexPath *)indexPath {
     [tableView deselectRowAtIndexPath:indexPath animated:YES];
-    
+
 	if (indexPath.section == FILE_FIXER) { // File Picker Fix
 		if (indexPath.row == 1) {
 			[self clearFilePickerFixCache];
 		}
 	}
-	
+
 	if (indexPath.section == FAKE_LOCATION) { // Fake Location
 		if (indexPath.row == 1) {
 			[self showLocationSelector];
 		}
 	}
-	
+
 	if (indexPath.section == LANGUAGE) { // Language
 		if (indexPath.row == 0) {
 			[self showLanguageSelector];
 		}
 	}
-	
+
     if (indexPath.section == CREDITS) {
 		if (indexPath.row == 0) {
 			NSString *base64String = @"aHR0cHM6Ly90Lm1lL3VsdGltYXRlUG9pc29u";
 	        NSData *decodedData = [[NSData alloc] initWithBase64EncodedString:base64String options:0];
 	        NSString *decodedURL = [[NSString alloc] initWithData:decodedData encoding:NSUTF8StringEncoding];
-	        
+
 	        NSURL *url = [NSURL URLWithString:decodedURL];
 	        if ([[UIApplication sharedApplication] canOpenURL:url]) {
 	            [[UIApplication sharedApplication] openURL:url options:@{} completionHandler:nil];
@@ -544,17 +544,17 @@ typedef NS_ENUM(NSInteger, TABLE_VIEW_SECTIONS) {
 		else if (indexPath.row == 1) {
 		    [self showDisclaimer];
 		}
-    } 
+    }
 }
 
 - (void)switchChanged:(UISwitch *)sender {
     NSInteger adjustedTag = sender.tag - 1000;
     NSInteger section = adjustedTag / 1000;
     NSInteger row = adjustedTag % 1000;
-    
+
     NSIndexPath *indexPath = [NSIndexPath indexPathForRow:row inSection:section];
     NSString *switchKey = [self switchKeyForIndexPath:indexPath];
-    
+
     if (switchKey) {
         [[NSUserDefaults standardUserDefaults] setBool:sender.isOn forKey:switchKey];
     }
@@ -612,12 +612,12 @@ typedef NS_ENUM(NSInteger, TABLE_VIEW_SECTIONS) {
 
 - (NSString *)sizeOfUglyFileFixDirectory {
 	NSString *uglyFixDirectory = [NSTemporaryDirectory() stringByAppendingPathComponent:FILE_PICKER_PATH];
-		        
+
     // Calculate size of it recursively
     unsigned long long totalSize = 0;
     NSFileManager *fileManager = [NSFileManager defaultManager];
     NSArray *contents = [fileManager subpathsAtPath:uglyFixDirectory];
-    
+
     for (NSString *path in contents) {
         NSString *fullPath = [uglyFixDirectory stringByAppendingPathComponent:path];
         BOOL isDirectory;
@@ -628,7 +628,7 @@ typedef NS_ENUM(NSInteger, TABLE_VIEW_SECTIONS) {
             }
         }
     }
-    
+
     // Format the size into MB or GB
     NSString *formattedSize;
     if (totalSize >= 1024 * 1024 * 1024) { // if the size is >= 1GB
@@ -643,7 +643,7 @@ typedef NS_ENUM(NSInteger, TABLE_VIEW_SECTIONS) {
 	UIAlertController *alert = [UIAlertController alertControllerWithTitle:TGLoc(@"DISCLAIMER")
 		              message:TGLoc(@"AUTHOR_MESSAGE")
 		       preferredStyle:UIAlertControllerStyleAlert];
-		
+
     UIAlertAction *okAction = [UIAlertAction actionWithTitle:TGLoc(@"OK")
                                                        style:UIAlertActionStyleDefault
                                                      handler:nil];
@@ -669,45 +669,45 @@ typedef NS_ENUM(NSInteger, TABLE_VIEW_SECTIONS) {
     UIAlertController *alert = [UIAlertController alertControllerWithTitle:TGLoc(@"CACHE_CLEAR_WARNING_TITLE")
                                                                    message:TGLoc(@"CACHE_CLEAR_WARNING_MESSAGE")
                                                             preferredStyle:UIAlertControllerStyleAlert];
-    
+
     UIAlertAction *okAction = [UIAlertAction actionWithTitle:TGLoc(@"OK")
                                                        style:UIAlertActionStyleDestructive
                                                      handler:^(UIAlertAction *action) {
         NSString *uglyFixDirectory = [NSTemporaryDirectory() stringByAppendingPathComponent:@"TGExtraFileFixUsingSomeUglyHacks"];
-        
+
         NSError *error = nil;
         [[NSFileManager defaultManager] removeItemAtPath:uglyFixDirectory error:&error];
-        
+
         if (error) {
             NSLog(@"Failed to remove cache directory: %@", error.localizedDescription);
         } else {
             NSLog(@"Successfully cleared cache: %@", uglyFixDirectory);
         }
-        
+
 		self.cacheSize = @"Cleared";
-		
+
         // Reload section or row as needed
         dispatch_async(dispatch_get_main_queue(), ^{
             NSIndexSet *section = [NSIndexSet indexSetWithIndex:FILE_FIXER];
             [self.tableView reloadSections:section withRowAnimation:UITableViewRowAnimationAutomatic];
         });
     }];
-    
+
     UIAlertAction *cancelAction = [UIAlertAction actionWithTitle:TGLoc(@"CANCEL")
                                                            style:UIAlertActionStyleCancel
                                                          handler:nil];
 
     [alert addAction:cancelAction];
     [alert addAction:okAction];
-    
+
     [self presentViewController:alert animated:YES completion:nil];
 }
 
 - (void)dealloc {
     [[NSNotificationCenter defaultCenter] removeObserver:self name:@"LanguageChangedNotification" object:nil];
-	
+
 	[[NSNotificationCenter defaultCenter] removeObserver:self name:@"TGExtralocationChanged" object:nil];
-	
+
 }
 
 @end

@@ -3,6 +3,7 @@
 #import <objc/runtime.h>
 #import <CoreLocation/CoreLocation.h>
 #import <MapKit/MapKit.h>
+#import <roothide.h>
 #import "../Constants.h"
 
 @interface TGExtra : UIViewController <UITableViewDataSource, UITableViewDelegate>

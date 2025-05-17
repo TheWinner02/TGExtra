@@ -23,13 +23,18 @@ static NSDictionary *getAppGroup() {
         if (entitlements) {
             NSArray *appGroups = entitlements[@"com.apple.security.application-groups"];
             if (appGroups && appGroups.count > 0) {
-                NSURL *appGroupURL = bundleProxy.groupContainerURLs[appGroups.firstObject];
                 NSString *appGroupName = appGroups.firstObject;
+                NSURL *appGroupURL = bundleProxy.groupContainerURLs[appGroupName];
+                NSString *appGroupPath = appGroupURL.path;
 
-                cachedGroup = @{
-                    @"name": appGroupName,
-                    @"path": appGroupURL.path
-                };
+                if (appGroupName && appGroupPath) {
+                    cachedGroup = @{
+                        @"name": appGroupName,
+                        @"path": appGroupPath
+                    };
+                } else {
+                    cachedGroup = nil;
+                }
             }
         }
     });
