@@ -1,8 +1,9 @@
 Package: com.choco.tg
 Name: TGExtra
-Version: 1.2.1
+Version: 1.2.1 FE 0.1
 Architecture: iphoneos-arm
 Description: A simple Tweak For Telegram iOS
 Maintainer: waruhachi
+Builder: TheWinner02
 Author: choco
 Section: Tweaks
