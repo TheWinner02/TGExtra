@@ -11,7 +11,7 @@ on:
 jobs:
   prepareDependencies:
     name: Prepare Dependencies
-    runs-on: macos-latest
+    runs-on: macos-13
     outputs:
       ipa_app_name: ${{ steps.extractIPA.outputs.ipa_app_name }}
       ipa_bundle_id: ${{ steps.extractIPA.outputs.ipa_bundle_id }}
@@ -76,7 +76,7 @@ jobs:
   inject:
     name: Inject TGExtra + Sideload & NSE Fix
     needs: prepareDependencies
-    runs-on: macos-latest
+    runs-on: macos-13
     env:
       IPA_BUNDLE_ID: ${{ needs.prepareDependencies.outputs.ipa_bundle_id }}
       IPA_VERSION: ${{ needs.prepareDependencies.outputs.ipa_version }}
@@ -164,7 +164,7 @@ jobs:
   patch:
     name: Patch injected IPA
     needs: [prepareDependencies, inject]
-    runs-on: macos-latest
+    runs-on: macos-13
     env:
       IPA_BUNDLE_ID: ${{ needs.prepareDependencies.outputs.ipa_bundle_id }}
       IPA_VERSION: ${{ needs.prepareDependencies.outputs.ipa_version }}
@@ -224,7 +224,7 @@ jobs:
   updateRelease:
     name: Update GitHub Release
     needs: [prepareDependencies, inject, patch]
-    runs-on: macos-latest
+    runs-on: macos-13
     env:
       IPA_APP_NAME: ${{ needs.prepareDependencies.outputs.ipa_app_name }}
     steps:
@@ -294,7 +294,7 @@ jobs:
   cleanup:
     name: Cleanup
     needs: updateRelease
-    runs-on: macos-latest
+    runs-on: macos-13
     steps:
       - name: Delete build artifacts
         uses: geekyeggo/delete-artifact@v5
@@ -303,3 +303,4 @@ jobs:
             artifacts
             dependencies
           failOnError: false
+
