@@ -9,7 +9,7 @@ on:
 
 jobs:
     cleanup:
-        runs-on: macos-latest
+        runs-on: macos-13
         steps:
             - uses: actions/checkout@v4
 
@@ -22,7 +22,7 @@ jobs:
 
     build:
         needs: cleanup
-        runs-on: macos-latest
+        runs-on: macos-13
         strategy:
             matrix:
                 scheme: [rootful, rootless, roothide]
@@ -57,7 +57,7 @@ jobs:
 
     release:
         needs: build
-        runs-on: macos-latest
+        runs-on: macos-13
         steps:
             - uses: actions/checkout@v4
 
