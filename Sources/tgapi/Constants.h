@@ -58,6 +58,7 @@
 #define kAntiSelfDestruct @"TGExtraAntiSelfDestruct"
 #define kDisableScreenshotNotification @"TGExtraDisableScreenshotNotification"
 #define kConfirmCalls @"TGExtraConfirmCalls"
+#define kHideStories @"TGExtraHideStories"
 
 #define FAKE_LOCATION_ENABLED_KEY @"TGExtraFakeLocation"
 #define FAKE_LATITUDE_KEY @"TGExtraSavedLatitude"

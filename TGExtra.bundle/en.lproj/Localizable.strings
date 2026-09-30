@@ -88,6 +88,9 @@
 "CONFIRM_CALLS_TITLE" = "Confirm Calls";
 "CONFIRM_CALLS_SUBTITLE" = "Ask for confirmation before starting an audio or video call.";
 
+"HIDE_STORIES_TITLE" = "Hide Stories";
+"HIDE_STORIES_SUBTITLE" = "Hide the stories carousel and story indicators throughout Telegram.";
+
 /* File Picker */
 "FIX_FILE_PICKER_TITLE" = "Fix File Picker";
 "FIX_FILE_PICKER_SUBTITLE" = "Fixes the issue where you can't pick files from Files App On Sideloaded Versions";

@@ -195,6 +195,16 @@ static ASDisplayNode *TGExtraFindNodeByClassNamePrefix(ASDisplayNode *node, NSSt
     }
 
     NSString *className = NSStringFromClass([self class]);
+    if ([[NSUserDefaults standardUserDefaults] boolForKey:kHideStories] &&
+        ([className containsString:@"StoryPeerList"] ||
+         [className containsString:@"StoryContainer"] ||
+         [className containsString:@"StorySetIndicator"] ||
+         [className containsString:@"AvatarStoryIndicator"])) {
+        self.view.hidden = YES;
+        self.view.alpha = 0.0;
+        return;
+    }
+
     if (![className containsString:@"ChatMessage"] ||
         ![className containsString:@"ItemNode"]) {
         return;
