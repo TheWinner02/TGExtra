@@ -1,5 +1,6 @@
 #import <UIKit/UIKit.h>
 #import "Headers.h"
+#import "../Logger/Logger.h"
 
 // Menu Open
 @interface ASDisplayNode : NSObject
@@ -11,6 +12,50 @@
 - (void)__handleSettingsTabLongPress:(UILongPressGestureRecognizer *)gesture;
 - (void)__handle5PleTap;
 @end
+
+@interface ASControlNode : ASDisplayNode
+- (void)sendActionsForControlEvents:(NSUInteger)controlEvents withEvent:(UIEvent *)event;
+@end
+
+// Telegram has used both of these class names across recent builds.
+%hook _TtC10TelegramUI29ChatPresentationInterfaceState
+- (BOOL)copyProtectionEnabled {
+    if ([[NSUserDefaults standardUserDefaults] boolForKey:kDisableForwardRestriction]) return NO;
+    return %orig;
+}
+%end
+
+%hook _TtC30ChatPresentationInterfaceState30ChatPresentationInterfaceState
+- (BOOL)copyProtectionEnabled {
+    if ([[NSUserDefaults standardUserDefaults] boolForKey:kDisableForwardRestriction]) return NO;
+    return %orig;
+}
+%end
+
+%hook _TtC7Postbox7Message
+- (BOOL)isCopyProtected {
+    if ([[NSUserDefaults standardUserDefaults] boolForKey:kDisableForwardRestriction]) return NO;
+    return %orig;
+}
+- (id)adAttribute {
+    if ([[NSUserDefaults standardUserDefaults] boolForKey:kDisableAllAds]) return nil;
+    return %orig;
+}
+%end
+
+%hook ChatMessageItem
+- (BOOL)noForwards {
+    if ([[NSUserDefaults standardUserDefaults] boolForKey:kDisableForwardRestriction]) return NO;
+    return %orig;
+}
+%end
+
+%hook ApiChat
+- (BOOL)noForwards {
+    if ([[NSUserDefaults standardUserDefaults] boolForKey:kDisableForwardRestriction]) return NO;
+    return %orig;
+}
+%end
 
 static ThreeFingerGestureHandler *gestureHandler = nil;
 static __weak TGLocalization *TGLocalizationShared = nil;
@@ -64,6 +109,71 @@ void handleThreeFingerLongPress(UILongPressGestureRecognizer *gesture) {
 %new
 - (void)__handle5PleTap {
 	showUI();
+}
+
+- (void)layout {
+    %orig;
+    if (![[NSUserDefaults standardUserDefaults] boolForKey:kDisableAllAds]) return;
+
+    @try {
+        NSString *className = NSStringFromClass([self class]);
+        if ([className containsString:@"ChatSponsoredMessage"] ||
+            [className containsString:@"ChatChannelAdItemNode"]) {
+            self.view.hidden = YES;
+            self.view.alpha = 0.0;
+        }
+    } @catch (NSException *exception) {
+        customLog2(@"TGExtra ad UI hook exception: %@", exception);
+    }
+}
+
+%end
+
+%hook ASControlNode
+
+- (void)sendActionsForControlEvents:(NSUInteger)controlEvents withEvent:(UIEvent *)event {
+    if (controlEvents == (1 << 4) &&
+        [[NSUserDefaults standardUserDefaults] boolForKey:kConfirmCalls]) {
+        NSString *label = [(id)self accessibilityLabel];
+        NSString *lower = label.lowercaseString;
+        NSSet *audioLabels = [NSSet setWithArray:@[
+            @"call", @"phone", @"chiama", @"chiamata", @"appel",
+            @"llamar", @"anrufen", @"позвонить", @"звонок"
+        ]];
+        NSSet *videoLabels = [NSSet setWithArray:@[
+            @"video", @"video call", @"videochiamata", @"appel vidéo",
+            @"videollamada", @"videoanruf", @"видео", @"видеозвонок"
+        ]];
+        BOOL isAudio = lower.length > 0 && [audioLabels containsObject:lower];
+        BOOL isVideo = lower.length > 0 && [videoLabels containsObject:lower];
+
+        if (isAudio || isVideo) {
+            UIWindow *window = UIApplication.sharedApplication.keyWindow;
+            UIViewController *controller = window.rootViewController;
+            while (controller.presentedViewController) {
+                controller = controller.presentedViewController;
+            }
+
+            if (controller) {
+                NSString *title = isVideo ? @"Avviare la videochiamata?" : @"Avviare la chiamata?";
+                UIAlertController *alert = [UIAlertController
+                    alertControllerWithTitle:title
+                                     message:nil
+                              preferredStyle:UIAlertControllerStyleAlert];
+                [alert addAction:[UIAlertAction actionWithTitle:@"Annulla"
+                                                          style:UIAlertActionStyleCancel
+                                                        handler:nil]];
+                [alert addAction:[UIAlertAction actionWithTitle:@"Chiama"
+                                                          style:UIAlertActionStyleDefault
+                                                        handler:^(__unused UIAlertAction *action) {
+                    %orig(controlEvents, event);
+                }]];
+                [controller presentViewController:alert animated:YES completion:nil];
+                return;
+            }
+        }
+    }
+    %orig;
 }
 
 %end
@@ -137,7 +247,13 @@ static void hook() {
 	dispatch_after(dispatch_time(DISPATCH_TIME_NOW, (int64_t)(0.1 * NSEC_PER_SEC)), dispatch_get_main_queue(), ^{
 	 	%init(
 		    TabBarNode = objc_getClass("TabBarUI.TabBarNode"),
-            PeerInfoScreenItemNode = objc_getClass("PeerInfoScreen.PeerInfoScreenItemNode")
+            PeerInfoScreenItemNode = objc_getClass("PeerInfoScreen.PeerInfoScreenItemNode"),
+            ChatMessageItem = objc_getClass("_TtC10TelegramUI15ChatMessageItem"),
+            ApiChat = objc_getClass("_TtC10TelegramUI11ApiChat"),
+            ASControlNode = objc_getClass("ASControlNode"),
+            _TtC7Postbox7Message = objc_getClass("_TtC7Postbox7Message"),
+            _TtC10TelegramUI29ChatPresentationInterfaceState = objc_getClass("_TtC10TelegramUI29ChatPresentationInterfaceState"),
+            _TtC30ChatPresentationInterfaceState30ChatPresentationInterfaceState = objc_getClass("_TtC30ChatPresentationInterfaceState30ChatPresentationInterfaceState")
 		);
 
         dispatch_after(dispatch_time(DISPATCH_TIME_NOW, (int64_t)(1.0 * NSEC_PER_SEC)), dispatch_get_main_queue(), ^{

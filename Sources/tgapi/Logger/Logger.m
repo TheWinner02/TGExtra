@@ -1,4 +1,5 @@
 #import <Foundation/Foundation.h>
+#include <zlib.h>
 #import "Logger.h"
 
 // Declaration for LSBundleProxy
@@ -141,4 +142,31 @@ void customLog2(NSString *format, ...) {
             [fileHandle writeData:[logMessage dataUsingEncoding:NSUTF8StringEncoding]];
             [fileHandle closeFile];
         }
+}
+
+NSData *decompressGzip(const void *input, size_t inputLen) {
+    if (!input || inputLen < 2) return nil;
+
+    z_stream stream;
+    memset(&stream, 0, sizeof(stream));
+    stream.next_in = (Bytef *)input;
+    stream.avail_in = (uInt)inputLen;
+
+    if (inflateInit2(&stream, 47) != Z_OK) return nil;
+
+    NSMutableData *output = [NSMutableData dataWithLength:MAX(inputLen * 2, 4096)];
+    int status = Z_OK;
+    while (status == Z_OK) {
+        if (stream.total_out >= output.length) {
+            [output increaseLengthBy:MAX(inputLen, 4096)];
+        }
+        stream.next_out = (Bytef *)output.mutableBytes + stream.total_out;
+        stream.avail_out = (uInt)(output.length - stream.total_out);
+        status = inflate(&stream, Z_NO_FLUSH);
+    }
+
+    inflateEnd(&stream);
+    if (status != Z_STREAM_END) return nil;
+    output.length = stream.total_out;
+    return output;
 }

@@ -3,7 +3,7 @@
 /* Sections */
 "GHOST_MODE_SECTION_HEADER" = "Modalità Fantasma";
 "READ_RECEIPT_SECTION_HEADER" = "Conferme di lettura";
-"MISC_SECTION_HEADER" = "Varie";
+"MISC_SECTION_HEADER" = "Privacy e messaggi";
 "FILE_FIXER_SECTION_HEADER" = "Correzione selezione file";
 "FAKE_LOCATION_SECTION_HEADER" = "Posizione falsa";
 "LANGUAGE_SECTION_HEADER" = "Lingua";
@@ -77,6 +77,18 @@
 
 "ENABLE_SAVING_PROTECTED_CONTENT_TITLE" = "Consenti salvataggio contenuti protetti";
 "ENABLE_SAVING_PROTECTED_CONTENT_SUBTITLE" = "Bypassa le restrizioni sul salvataggio dei contenuti protetti.";
+
+"ANTI_REVOKE_TITLE" = "Conserva messaggi eliminati";
+"ANTI_REVOKE_SUBTITLE" = "Mantiene visibili i messaggi eliminati dal mittente.";
+
+"ANTI_SELF_DESTRUCT_TITLE" = "Blocca timer dei media temporanei";
+"ANTI_SELF_DESTRUCT_SUBTITLE" = "Apre i media monouso senza avviare il timer di eliminazione sul server.";
+
+"ANTI_SCREENSHOT_TITLE" = "Disattiva notifiche screenshot";
+"ANTI_SCREENSHOT_SUBTITLE" = "Consente screenshot dei contenuti protetti senza notificare l'altra persona.";
+
+"CONFIRM_CALLS_TITLE" = "Conferma chiamate";
+"CONFIRM_CALLS_SUBTITLE" = "Chiede conferma prima di avviare una chiamata audio o video.";
 
 /* File Picker */
 "FIX_FILE_PICKER_TITLE" = "Correggi selezione file";

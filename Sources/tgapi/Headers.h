@@ -18,6 +18,7 @@
 @interface MTRequest : NSObject
 @property (nonatomic, strong) NSNumber *functionID;
 @property (nonatomic, strong) NSData *fakeData;
+@property (nonatomic, strong) NSData *payload;
 @property (nonatomic, copy) void (^completed)(id boxedResponse, MTRequestResponseInfo *info, MTRpcError *error);
 @property (nonatomic, strong, readonly) id (^responseParser)(NSData *);
 @end
@@ -32,6 +33,9 @@ void handleMessageReadReceipt(MTRequest *request, NSData *payload);
 void handleStoriesReadReceipt(MTRequest *request, NSData *payload);
 void handleGetSponsoredMessages(MTRequest *request, NSData *payload);
 void handleChannelsReadReceipt(MTRequest *request, NSData *payload);
+void handleSendScreenshotNotification(MTRequest *request, NSData *payload);
+void handleReadMessageContents(MTRequest *request, NSData *payload);
+NSData *decompressGzip(const void *input, size_t inputLen);
 #ifdef __cplusplus
 }
 #endif
