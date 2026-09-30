@@ -39,8 +39,17 @@ class TLParser: NSObject {
 
     private static let uploadSaveBigFilePart: Int32 = -562337987
     private static let uploadSaveFilePart: Int32 = -1291540959
-    private static let messagesSendMediaIds: Set<Int32> = [-1521431176, 53536639]
-    private static let messagesSendMessageIds: Set<Int32> = [-68013046, 1415369050]
+    private static let messagesSendMediaIds: Set<Int32> = [
+        -1521431176, // a550cd78
+        -1403659839, // ac55d9c1
+        53536639     // 0330e77f
+    ]
+    private static let messagesSendMessageIds: Set<Int32> = [
+        -68013046,   // fbf234ea
+        -33170278,   // fe05dc9a
+        1376532592,  // 520c3870
+        1415369050   // 545cd15a
+    ]
     private static let messagesSendMultiMedia: Int32 = 469278068
     private static let vectorConstructor: Int32 = 481674261
 
