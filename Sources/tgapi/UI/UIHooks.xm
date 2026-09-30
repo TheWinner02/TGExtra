@@ -1,5 +1,6 @@
 #import <UIKit/UIKit.h>
 #import "Headers.h"
+#import "../Headers.h"
 #import "../Logger/Logger.h"
 
 #define kMessageDeletedNotification @"TGExtraMessageDeletedRealtime"
