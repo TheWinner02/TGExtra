@@ -13,7 +13,7 @@ static NSData *TGExtraNeutralizeDeleteUpdates(NSData *data) {
     memcpy(&constructor, data.bytes, sizeof(constructor));
 
     if (constructor == kGzipPackedConstructor) {
-        const uint8_t *bytes = data.bytes;
+        const uint8_t *bytes = (const uint8_t *)data.bytes;
         NSUInteger offset = 4;
         NSUInteger packedLength = 0;
         uint8_t first = bytes[offset];
@@ -36,7 +36,7 @@ static NSData *TGExtraNeutralizeDeleteUpdates(NSData *data) {
     }
 
     NSMutableData *result = [data mutableCopy];
-    uint8_t *bytes = result.mutableBytes;
+    uint8_t *bytes = (uint8_t *)result.mutableBytes;
     NSUInteger length = result.length;
     BOOL changed = NO;
 
