@@ -5,6 +5,30 @@
 #define kUpdateDeleteChannelMessages -1020437742
 #define kVectorConstructor 481674261
 #define kGzipPackedConstructor ((int32_t)0x3072CFA1)
+#define kDeletedMessageIdsKey @"TGExtraDeletedMessageIds"
+#define kMessageDeletedNotification @"TGExtraMessageDeletedRealtime"
+
+static void TGExtraRecordDeletedMessageIds(NSArray<NSNumber *> *messageIds) {
+    if (messageIds.count == 0) return;
+
+    NSUserDefaults *defaults = [NSUserDefaults standardUserDefaults];
+    @synchronized (defaults) {
+        NSMutableOrderedSet<NSNumber *> *saved = [NSMutableOrderedSet orderedSetWithArray:
+            [defaults arrayForKey:kDeletedMessageIdsKey] ?: @[]];
+        [saved addObjectsFromArray:messageIds];
+        while (saved.count > 1000) {
+            [saved removeObjectAtIndex:0];
+        }
+        [defaults setObject:saved.array forKey:kDeletedMessageIdsKey];
+    }
+
+    dispatch_async(dispatch_get_main_queue(), ^{
+        [[NSNotificationCenter defaultCenter]
+            postNotificationName:kMessageDeletedNotification
+                          object:nil
+                        userInfo:@{@"ids": messageIds}];
+    });
+}
 
 static NSData *TGExtraNeutralizeDeleteUpdates(NSData *data) {
     if (!data || data.length < 8) return nil;
@@ -39,6 +63,7 @@ static NSData *TGExtraNeutralizeDeleteUpdates(NSData *data) {
     uint8_t *bytes = (uint8_t *)result.mutableBytes;
     NSUInteger length = result.length;
     BOOL changed = NO;
+    NSMutableArray<NSNumber *> *deletedIds = [NSMutableArray array];
 
     for (NSUInteger offset = 0; offset + 12 <= length; offset += 4) {
         int32_t word = 0;
@@ -69,10 +94,18 @@ static NSData *TGExtraNeutralizeDeleteUpdates(NSData *data) {
 
         NSUInteger idsLength = (NSUInteger)count * sizeof(int32_t);
         if (idsOffset + idsLength > length) continue;
+
+        for (int32_t index = 0; index < count; index++) {
+            int32_t originalId = 0;
+            memcpy(&originalId, bytes + idsOffset + ((NSUInteger)index * sizeof(int32_t)),
+                   sizeof(originalId));
+            if (originalId != 0) [deletedIds addObject:@(originalId)];
+        }
         memset(bytes + idsOffset, 0, idsLength);
         changed = YES;
     }
 
+    if (changed) TGExtraRecordDeletedMessageIds(deletedIds);
     return changed ? result : nil;
 }
 

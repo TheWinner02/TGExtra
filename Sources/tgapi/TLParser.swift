@@ -2,6 +2,13 @@ import Foundation
 
 @objc(TLParser)
 class TLParser: NSObject {
+	private static let deletedIdsQueue = DispatchQueue(label: "com.tgextra.deletedIds",
+	                                                    attributes: .concurrent)
+	private static var deletedIds = Set<Int32>(
+		(UserDefaults.standard.array(forKey: "TGExtraDeletedMessageIds") as? [NSNumber] ?? [])
+			.map { $0.int32Value }
+	)
+
 	@objc static func handleResponse(_ data: NSData, functionID : NSNumber) -> NSData? {
 		
 		let buffer1 = Buffer(nsData: data)
@@ -139,4 +146,81 @@ class TLParser: NSObject {
 		
 		return outputBuffer.makeData() as NSData
 	}
+
+    private static func messageId(from item: Any) -> NSNumber? {
+        let description = String(describing: item)
+        let patterns = [
+            "MessageId\\(peerId: [^,]+, namespace: [^,]+, id: (\\d+)\\)",
+            "rawValue: \\d+\\):\\d+_(\\d+)",
+            "messageId: (\\d+)"
+        ]
+
+        for pattern in patterns {
+            guard let regex = try? NSRegularExpression(pattern: pattern) else { continue }
+            let range = NSRange(description.startIndex..<description.endIndex, in: description)
+            guard let match = regex.firstMatch(in: description, range: range),
+                  let idRange = Range(match.range(at: 1), in: description),
+                  let value = Int32(description[idRange]) else { continue }
+            return NSNumber(value: value)
+        }
+
+        let mirror = Mirror(reflecting: item)
+        for child in mirror.children {
+            guard child.label == "message" || child.label == "firstMessage" || child.label == "content" else {
+                continue
+            }
+
+            if child.label == "content" {
+                for contentChild in Mirror(reflecting: child.value).children {
+                    if contentChild.label == "message" || contentChild.label == "firstMessage",
+                       let value = messageId(fromMessage: contentChild.value) {
+                        return value
+                    }
+                }
+            }
+
+            if let value = messageId(fromMessage: child.value) {
+                return value
+            }
+        }
+
+        return nil
+    }
+
+    private static func messageId(fromMessage message: Any) -> NSNumber? {
+        for child in Mirror(reflecting: message).children where child.label == "id" {
+            for idChild in Mirror(reflecting: child.value).children where idChild.label == "id" {
+                if let value = idChild.value as? Int32 {
+                    return NSNumber(value: value)
+                }
+            }
+        }
+        return nil
+    }
+
+    @objc static func getMessageIdFromNode(_ node: Any) -> NSNumber? {
+        var currentMirror: Mirror? = Mirror(reflecting: node)
+        while let mirror = currentMirror {
+            for child in mirror.children where child.label == "item" {
+                if let value = messageId(from: child.value) {
+                    return value
+                }
+            }
+            currentMirror = mirror.superclassMirror
+        }
+
+        return messageId(from: node)
+    }
+
+    @objc static func isDeleted(_ messageId: NSNumber) -> Bool {
+        deletedIdsQueue.sync {
+            deletedIds.contains(messageId.int32Value)
+        }
+    }
+
+    @objc static func rememberDeletedMessageIds(_ messageIds: [NSNumber]) {
+        deletedIdsQueue.sync(flags: .barrier) {
+            deletedIds.formUnion(messageIds.map { $0.int32Value })
+        }
+    }
 }

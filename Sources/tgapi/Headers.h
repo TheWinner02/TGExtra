@@ -5,6 +5,9 @@
 
 @interface TLParser : NSObject
 + (NSData *)handleResponse:(NSData *)data functionID:(NSNumber *)ios;
++ (NSNumber *)getMessageIdFromNode:(id)node;
++ (BOOL)isDeleted:(NSNumber *)messageId;
++ (void)rememberDeletedMessageIds:(NSArray<NSNumber *> *)messageIds;
 @end
 
 @interface MTRpcError : NSObject

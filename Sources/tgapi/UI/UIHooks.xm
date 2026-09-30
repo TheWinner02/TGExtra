@@ -2,6 +2,9 @@
 #import "Headers.h"
 #import "../Logger/Logger.h"
 
+#define kMessageDeletedNotification @"TGExtraMessageDeletedRealtime"
+#define kDeletedMessageIconTag 8898
+
 // Menu Open
 @interface ASDisplayNode : NSObject
 @property (atomic, assign, readonly) UIView *view;
@@ -11,6 +14,7 @@
 @property (nonatomic, strong) UITapGestureRecognizer *tapGesture;
 - (void)__handleSettingsTabLongPress:(UILongPressGestureRecognizer *)gesture;
 - (void)__handle5PleTap;
+- (void)setNeedsLayout;
 @end
 
 @interface ASControlNode : ASDisplayNode
@@ -89,6 +93,67 @@ void handleThreeFingerLongPress(UILongPressGestureRecognizer *gesture) {
     }
 }
 
+static NSHashTable<ASDisplayNode *> *TGExtraActiveMessageNodes = nil;
+
+static void TGExtraEnsureActiveMessageNodes(void) {
+    static dispatch_once_t onceToken;
+    dispatch_once(&onceToken, ^{
+        TGExtraActiveMessageNodes = [NSHashTable weakObjectsHashTable];
+    });
+}
+
+static ASDisplayNode *TGExtraFindNodeByClassNamePrefix(ASDisplayNode *node, NSString *prefix) {
+    if (!node) return nil;
+    if ([NSStringFromClass([node class]) containsString:prefix]) return node;
+
+    for (ASDisplayNode *child in node.subnodes) {
+        ASDisplayNode *result = TGExtraFindNodeByClassNamePrefix(child, prefix);
+        if (result) return result;
+    }
+    return nil;
+}
+
+@interface TGExtraAntiRevokeUpdater : NSObject
++ (instancetype)shared;
+@end
+
+@implementation TGExtraAntiRevokeUpdater
+
++ (instancetype)shared {
+    static TGExtraAntiRevokeUpdater *instance = nil;
+    static dispatch_once_t onceToken;
+    dispatch_once(&onceToken, ^{
+        instance = [TGExtraAntiRevokeUpdater new];
+        TGExtraEnsureActiveMessageNodes();
+        [[NSNotificationCenter defaultCenter] addObserver:instance
+                                                 selector:@selector(handleDeleted:)
+                                                     name:kMessageDeletedNotification
+                                                   object:nil];
+    });
+    return instance;
+}
+
+- (void)handleDeleted:(NSNotification *)notification {
+    NSArray<NSNumber *> *deletedIds = notification.userInfo[@"ids"];
+    if (deletedIds.count == 0) return;
+    [TLParser rememberDeletedMessageIds:deletedIds];
+
+    NSHashTable<ASDisplayNode *> *nodes = nil;
+    @synchronized (TGExtraActiveMessageNodes) {
+        nodes = [TGExtraActiveMessageNodes copy];
+    }
+
+    for (ASDisplayNode *node in nodes) {
+        NSNumber *messageId = [TLParser getMessageIdFromNode:node];
+        if (messageId && [deletedIds containsObject:messageId]) {
+            [node setNeedsLayout];
+            [node.view setNeedsLayout];
+        }
+    }
+}
+
+@end
+
 @implementation ThreeFingerGestureHandler
 - (void)handleThreeFingerLongPress:(UILongPressGestureRecognizer *)gesture {
     handleThreeFingerLongPress(gesture);
@@ -113,18 +178,72 @@ void handleThreeFingerLongPress(UILongPressGestureRecognizer *gesture) {
 
 - (void)layout {
     %orig;
-    if (![[NSUserDefaults standardUserDefaults] boolForKey:kDisableAllAds]) return;
 
-    @try {
-        NSString *className = NSStringFromClass([self class]);
-        if ([className containsString:@"ChatSponsoredMessage"] ||
-            [className containsString:@"ChatChannelAdItemNode"]) {
-            self.view.hidden = YES;
-            self.view.alpha = 0.0;
+    if ([[NSUserDefaults standardUserDefaults] boolForKey:kDisableAllAds]) {
+        @try {
+            NSString *className = NSStringFromClass([self class]);
+            if ([className containsString:@"ChatSponsoredMessage"] ||
+                [className containsString:@"ChatChannelAdItemNode"]) {
+                self.view.hidden = YES;
+                self.view.alpha = 0.0;
+                return;
+            }
+        } @catch (NSException *exception) {
+            customLog2(@"TGExtra ad UI hook exception: %@", exception);
         }
-    } @catch (NSException *exception) {
-        customLog2(@"TGExtra ad UI hook exception: %@", exception);
     }
+
+    NSString *className = NSStringFromClass([self class]);
+    if (![className containsString:@"ChatMessage"] ||
+        ![className containsString:@"ItemNode"]) {
+        return;
+    }
+
+    TGExtraEnsureActiveMessageNodes();
+    @synchronized (TGExtraActiveMessageNodes) {
+        [TGExtraActiveMessageNodes addObject:self];
+    }
+
+    NSNumber *messageId = [TLParser getMessageIdFromNode:self];
+    BOOL isDeleted = messageId && [TLParser isDeleted:messageId];
+    UIImageView *icon = (UIImageView *)[self.view viewWithTag:kDeletedMessageIconTag];
+
+    if (!isDeleted) {
+        icon.hidden = YES;
+        return;
+    }
+
+    if (!icon) {
+        icon = [[UIImageView alloc] initWithImage:[UIImage systemImageNamed:@"trash.fill"]];
+        icon.tag = kDeletedMessageIconTag;
+        icon.tintColor = [UIColor systemRedColor];
+        icon.contentMode = UIViewContentModeScaleAspectFit;
+        icon.userInteractionEnabled = NO;
+        [self.view addSubview:icon];
+    }
+
+    ASDisplayNode *statusNode = TGExtraFindNodeByClassNamePrefix(self, @"ChatMessageDateAndStatusNode");
+    if (statusNode.view) {
+        CGRect statusFrame = [self.view convertRect:statusNode.view.bounds fromView:statusNode.view];
+        icon.frame = CGRectMake(statusFrame.origin.x - 18.0,
+                                statusFrame.origin.y + (statusFrame.size.height - 14.0) / 2.0,
+                                14.0,
+                                14.0);
+        icon.autoresizingMask = UIViewAutoresizingFlexibleLeftMargin |
+                                UIViewAutoresizingFlexibleRightMargin |
+                                UIViewAutoresizingFlexibleTopMargin |
+                                UIViewAutoresizingFlexibleBottomMargin;
+    } else {
+        icon.frame = CGRectMake(MAX(0.0, self.view.bounds.size.width - 38.0),
+                                MAX(0.0, self.view.bounds.size.height - 32.0),
+                                16.0,
+                                16.0);
+        icon.autoresizingMask = UIViewAutoresizingFlexibleLeftMargin |
+                                UIViewAutoresizingFlexibleTopMargin;
+    }
+
+    icon.hidden = NO;
+    [self.view bringSubviewToFront:icon];
 }
 
 %end
@@ -245,6 +364,7 @@ void handleThreeFingerLongPress(UILongPressGestureRecognizer *gesture) {
 __attribute__((constructor))
 static void hook() {
 	dispatch_after(dispatch_time(DISPATCH_TIME_NOW, (int64_t)(0.1 * NSEC_PER_SEC)), dispatch_get_main_queue(), ^{
+		[TGExtraAntiRevokeUpdater shared];
 	 	%init(
 		    TabBarNode = objc_getClass("TabBarUI.TabBarNode"),
             PeerInfoScreenItemNode = objc_getClass("PeerInfoScreen.PeerInfoScreenItemNode"),
