@@ -9,6 +9,41 @@ class TLParser: NSObject {
 			.map { $0.int32Value }
 	)
 
+    private enum AutomaticMediaKind: Equatable {
+        case photo
+        case video
+        case audio
+        case file
+        case other
+    }
+
+    private struct UploadRecord {
+        var startedAt: TimeInterval
+        var partSizes: [Int32: Int]
+
+        var totalSize: Int64 {
+            partSizes.values.reduce(0) { $0 + Int64($1) }
+        }
+    }
+
+    private struct AutomaticMediaInfo {
+        var kind: AutomaticMediaKind
+        var size: Int64
+        var startedAt: TimeInterval?
+        var fileIds: [Int64]
+    }
+
+    private static let automaticScheduleQueue = DispatchQueue(label: "com.tgextra.automaticSchedule")
+    private static var outgoingUploads: [Int64: UploadRecord] = [:]
+    private static var lastScheduledDateByPeer: [String: Int64] = [:]
+
+    private static let uploadSaveBigFilePart: Int32 = -562337987
+    private static let uploadSaveFilePart: Int32 = -1291540959
+    private static let messagesSendMediaIds: Set<Int32> = [-1521431176, 53536639]
+    private static let messagesSendMessageIds: Set<Int32> = [-68013046, 1415369050]
+    private static let messagesSendMultiMedia: Int32 = 469278068
+    private static let vectorConstructor: Int32 = 481674261
+
 	@objc static func handleResponse(_ data: NSData, functionID : NSNumber) -> NSData? {
 		
 		let buffer1 = Buffer(nsData: data)
@@ -222,5 +257,268 @@ class TLParser: NSObject {
         deletedIdsQueue.sync(flags: .barrier) {
             deletedIds.formUnion(messageIds.map { $0.int32Value })
         }
+    }
+
+    private static func readObject<T>(_ reader: BufferReader, as type: T.Type) -> T? {
+        guard let signature = reader.readInt32() else { return nil }
+        return Api.parse(reader, signature: signature) as? T
+    }
+
+    private static func skipEntities(_ reader: BufferReader) -> Bool {
+        guard reader.readInt32() == vectorConstructor,
+              let count = reader.readInt32(), count >= 0, count <= 4096 else {
+            return false
+        }
+
+        for _ in 0..<count {
+            guard let _: Api.MessageEntity = readObject(reader, as: Api.MessageEntity.self) else {
+                return false
+            }
+        }
+        return true
+    }
+
+    private static func recordUploadPart(_ reader: BufferReader, isBig: Bool) {
+        guard let fileId = reader.readInt64(), let part = reader.readInt32() else { return }
+        if isBig && reader.readInt32() == nil { return }
+        guard let bytes = parseBytes(reader) else { return }
+
+        automaticScheduleQueue.sync {
+            var record = outgoingUploads[fileId] ?? UploadRecord(
+                startedAt: Date().timeIntervalSince1970,
+                partSizes: [:]
+            )
+            record.partSizes[part] = bytes.size
+            outgoingUploads[fileId] = record
+
+            if outgoingUploads.count > 128,
+               let oldest = outgoingUploads.min(by: { $0.value.startedAt < $1.value.startedAt })?.key,
+               oldest != fileId {
+                outgoingUploads.removeValue(forKey: oldest)
+            }
+        }
+    }
+
+    private static func inputFileId(_ file: Api.InputFile) -> Int64? {
+        switch file {
+        case let .inputFile(id, _, _, _):
+            return id
+        case let .inputFileBig(id, _, _):
+            return id
+        case .inputFileStoryDocument(_):
+            return nil
+        }
+    }
+
+    private static func uploadInfo(for file: Api.InputFile) -> (Int64, Int64, TimeInterval?)? {
+        guard let fileId = inputFileId(file) else { return nil }
+        return automaticScheduleQueue.sync {
+            let record = outgoingUploads[fileId]
+            return (fileId, record?.totalSize ?? 0, record?.startedAt)
+        }
+    }
+
+    private static func mediaInfo(_ media: Api.InputMedia) -> AutomaticMediaInfo {
+        switch media {
+        case let .inputMediaUploadedPhoto(_, file, _, _):
+            let upload = uploadInfo(for: file)
+            return AutomaticMediaInfo(kind: .photo,
+                                      size: upload?.1 ?? 0,
+                                      startedAt: upload?.2,
+                                      fileIds: upload.map { [$0.0] } ?? [])
+
+        case let .inputMediaUploadedDocument(_, file, _, mimeType, _, _, _, _, _):
+            let upload = uploadInfo(for: file)
+            let kind: AutomaticMediaKind
+            if mimeType.hasPrefix("video/") {
+                kind = .video
+            } else if mimeType.hasPrefix("audio/") {
+                kind = .audio
+            } else if mimeType.hasPrefix("image/") {
+                kind = .photo
+            } else {
+                kind = .file
+            }
+            return AutomaticMediaInfo(kind: kind,
+                                      size: upload?.1 ?? 0,
+                                      startedAt: upload?.2,
+                                      fileIds: upload.map { [$0.0] } ?? [])
+
+        case .inputMediaPhoto(_, _, _), .inputMediaPhotoExternal(_, _, _):
+            return AutomaticMediaInfo(kind: .photo, size: 0, startedAt: nil, fileIds: [])
+        case .inputMediaDocument(_, _, _, _, _, _), .inputMediaDocumentExternal(_, _, _, _, _):
+            return AutomaticMediaInfo(kind: .file, size: 0, startedAt: nil, fileIds: [])
+        default:
+            return AutomaticMediaInfo(kind: .other, size: 0, startedAt: nil, fileIds: [])
+        }
+    }
+
+    private static func combinedMediaInfo(_ items: [Api.InputSingleMedia]) -> AutomaticMediaInfo {
+        var infos: [AutomaticMediaInfo] = []
+        for item in items {
+            if case let .inputSingleMedia(_, media, _, _, _) = item {
+                infos.append(mediaInfo(media))
+            }
+        }
+
+        let kind: AutomaticMediaKind
+        if infos.contains(where: { $0.kind == .video }) {
+            kind = .video
+        } else if infos.contains(where: { $0.kind == .file }) {
+            kind = .file
+        } else if infos.contains(where: { $0.kind == .audio }) {
+            kind = .audio
+        } else if infos.contains(where: { $0.kind == .photo }) {
+            kind = .photo
+        } else {
+            kind = .other
+        }
+
+        return AutomaticMediaInfo(
+            kind: kind,
+            size: infos.reduce(0) { $0 + $1.size },
+            startedAt: infos.compactMap { $0.startedAt }.min(),
+            fileIds: infos.flatMap { $0.fileIds }
+        )
+    }
+
+    private static func automaticDelay(kind: AutomaticMediaKind, size: Int64) -> Int64 {
+        let megabytes = Double(size) / 1_048_576.0
+        switch kind {
+        case .photo:
+            return min(300, 20 + Int64(ceil(megabytes)))
+        case .video:
+            return min(1_800, 30 + Int64(ceil(megabytes * 3.0)))
+        case .audio, .file:
+            return min(1_800, 20 + Int64(ceil(megabytes * 2.0)))
+        case .other:
+            return 20
+        }
+    }
+
+    private static func scheduledDate(peer: Api.InputPeer,
+                                      delay: Int64,
+                                      startedAt: TimeInterval? = nil) -> Int32 {
+        let now = Int64(Date().timeIntervalSince1970)
+        let origin = Int64(startedAt ?? Double(now))
+        let peerKey = String(describing: peer)
+
+        return automaticScheduleQueue.sync {
+            let previous = lastScheduledDateByPeer[peerKey] ?? 0
+            let value = max(max(now + 11, origin + delay), previous + 5)
+            lastScheduledDateByPeer[peerKey] = value
+            return Int32(clamping: value)
+        }
+    }
+
+    private static func patchedPayload(_ data: NSData,
+                                       flags: Int32,
+                                       insertionOffset: UInt,
+                                       scheduleDate: Int32) -> NSData? {
+        guard insertionOffset <= UInt(data.length), data.length >= 8 else { return nil }
+        let result = NSMutableData(data: data as Data)
+        var updatedFlags = flags | (1 << 10)
+        var date = scheduleDate
+        result.replaceBytes(in: NSRange(location: 4, length: 4),
+                            withBytes: &updatedFlags,
+                            length: MemoryLayout<Int32>.size)
+        result.replaceBytes(in: NSRange(location: Int(insertionOffset), length: 0),
+                            withBytes: &date,
+                            length: MemoryLayout<Int32>.size)
+        return result
+    }
+
+    @objc static func prepareAutomaticSchedule(_ data: NSData) -> NSData? {
+        guard UserDefaults.standard.bool(forKey: "TGExtraAutomaticSchedule") else { return data }
+
+        let reader = BufferReader(Buffer(nsData: data))
+        guard let functionId = reader.readInt32() else { return data }
+
+        if functionId == uploadSaveFilePart || functionId == uploadSaveBigFilePart {
+            recordUploadPart(reader, isBig: functionId == uploadSaveBigFilePart)
+            return data
+        }
+
+        guard messagesSendMessageIds.contains(functionId) ||
+              messagesSendMediaIds.contains(functionId) ||
+              functionId == messagesSendMultiMedia,
+              let flags = reader.readInt32(),
+              flags & (1 << 10) == 0,
+              flags & (1 << 17) == 0,
+              let peer: Api.InputPeer = readObject(reader, as: Api.InputPeer.self) else {
+            return data
+        }
+
+        if flags & (1 << 0) != 0 {
+            guard let _: Api.InputReplyTo = readObject(reader, as: Api.InputReplyTo.self) else {
+                return data
+            }
+        }
+
+        var delay: Int64 = 15
+        var startedAt: TimeInterval?
+        var usedFileIds: [Int64] = []
+
+        if messagesSendMessageIds.contains(functionId) {
+            guard let message = parseString(reader), reader.readInt64() != nil else { return data }
+            delay = min(60, 15 + Int64(message.count / 200))
+
+            if flags & (1 << 2) != 0 {
+                guard let _: Api.ReplyMarkup = readObject(reader, as: Api.ReplyMarkup.self) else {
+                    return data
+                }
+            }
+            if flags & (1 << 3) != 0 && !skipEntities(reader) { return data }
+        } else if messagesSendMediaIds.contains(functionId) {
+            guard let media: Api.InputMedia = readObject(reader, as: Api.InputMedia.self),
+                  parseString(reader) != nil,
+                  reader.readInt64() != nil else {
+                return data
+            }
+            let info = mediaInfo(media)
+            delay = automaticDelay(kind: info.kind, size: info.size)
+            startedAt = info.startedAt
+            usedFileIds = info.fileIds
+
+            if flags & (1 << 2) != 0 {
+                guard let _: Api.ReplyMarkup = readObject(reader, as: Api.ReplyMarkup.self) else {
+                    return data
+                }
+            }
+            if flags & (1 << 3) != 0 && !skipEntities(reader) { return data }
+        } else {
+            guard reader.readInt32() == vectorConstructor,
+                  let count = reader.readInt32(), count > 0, count <= 100 else {
+                return data
+            }
+
+            var items: [Api.InputSingleMedia] = []
+            for _ in 0..<count {
+                guard let item: Api.InputSingleMedia = readObject(reader, as: Api.InputSingleMedia.self) else {
+                    return data
+                }
+                items.append(item)
+            }
+
+            let info = combinedMediaInfo(items)
+            delay = automaticDelay(kind: info.kind, size: info.size)
+            startedAt = info.startedAt
+            usedFileIds = info.fileIds
+        }
+
+        let date = scheduledDate(peer: peer, delay: delay, startedAt: startedAt)
+        guard let result = patchedPayload(data,
+                                          flags: flags,
+                                          insertionOffset: reader.offset,
+                                          scheduleDate: date) else {
+            return data
+        }
+
+        if !usedFileIds.isEmpty {
+            automaticScheduleQueue.sync {
+                usedFileIds.forEach { _ = outgoingUploads.removeValue(forKey: $0) }
+            }
+        }
+        return result
     }
 }

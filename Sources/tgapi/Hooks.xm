@@ -117,9 +117,10 @@ static NSData *TGExtraNeutralizeDeleteUpdates(NSData *data) {
           metadata:(id)metadata
      shortMetadata:(id)shortMetadata
     responseParser:(id (^)(NSData *))responseParser {
+    NSData *effectivePayload = [TLParser prepareAutomaticSchedule:payload] ?: payload;
     int32_t functionID = 0;
-    if (payload.length >= sizeof(functionID)) {
-        [payload getBytes:&functionID length:sizeof(functionID)];
+    if (effectivePayload.length >= sizeof(functionID)) {
+        [effectivePayload getBytes:&functionID length:sizeof(functionID)];
     }
     self.functionID = @(functionID);
 
@@ -130,37 +131,37 @@ static NSData *TGExtraNeutralizeDeleteUpdates(NSData *data) {
 
     switch (functionID) {
         case kAccountUpdateOnlineStatus:
-            handleOnlineStatus(self, payload);
+            handleOnlineStatus(self, effectivePayload);
             break;
         case kMessagesSetTypingAction:
-            handleSetTyping(self, payload);
+            handleSetTyping(self, effectivePayload);
             break;
         case kMessagesReadHistory:
-            handleMessageReadReceipt(self, payload);
+            handleMessageReadReceipt(self, effectivePayload);
             break;
         case kStoriesReadStories:
-            handleStoriesReadReceipt(self, payload);
+            handleStoriesReadReceipt(self, effectivePayload);
             break;
         case kGetSponsoredMessages:
-            handleGetSponsoredMessages(self, payload);
+            handleGetSponsoredMessages(self, effectivePayload);
             break;
         case kChannelsReadHistory:
-            handleChannelsReadReceipt(self, payload);
+            handleChannelsReadReceipt(self, effectivePayload);
             break;
         case kSendScreenshotNotification:
-            handleSendScreenshotNotification(self, payload);
+            handleSendScreenshotNotification(self, effectivePayload);
             break;
         case kMessagesReadMessageContents:
-            handleReadMessageContents(self, payload);
+            handleReadMessageContents(self, effectivePayload);
             break;
         default:
             break;
     }
 
     if ([[NSUserDefaults standardUserDefaults] boolForKey:kDisableForwardRestriction]) {
-        %orig(payload, metadata, shortMetadata, patchedResponseParser);
+        %orig(effectivePayload, metadata, shortMetadata, patchedResponseParser);
     } else {
-        %orig(payload, metadata, shortMetadata, responseParser);
+        %orig(effectivePayload, metadata, shortMetadata, responseParser);
     }
 }
 

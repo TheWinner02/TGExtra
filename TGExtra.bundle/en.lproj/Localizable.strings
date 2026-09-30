@@ -91,6 +91,9 @@
 "HIDE_STORIES_TITLE" = "Hide Stories";
 "HIDE_STORIES_SUBTITLE" = "Hide the stories carousel and story indicators throughout Telegram.";
 
+"AUTOMATIC_SCHEDULE_TITLE" = "Automatic Scheduling";
+"AUTOMATIC_SCHEDULE_SUBTITLE" = "Schedule outgoing messages automatically using a delay based on content type and file size.";
+
 /* File Picker */
 "FIX_FILE_PICKER_TITLE" = "Fix File Picker";
 "FIX_FILE_PICKER_SUBTITLE" = "Fixes the issue where you can't pick files from Files App On Sideloaded Versions";

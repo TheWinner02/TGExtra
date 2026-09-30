@@ -93,6 +93,9 @@
 "HIDE_STORIES_TITLE" = "Nascondi storie";
 "HIDE_STORIES_SUBTITLE" = "Nasconde il carosello e gli indicatori delle storie in Telegram.";
 
+"AUTOMATIC_SCHEDULE_TITLE" = "Programmazione automatica";
+"AUTOMATIC_SCHEDULE_SUBTITLE" = "Programma automaticamente i messaggi usando un ritardo basato sul tipo di contenuto e sulla dimensione del file.";
+
 /* File Picker */
 "FIX_FILE_PICKER_TITLE" = "Correggi selezione file";
 "FIX_FILE_PICKER_SUBTITLE" = "Corregge il problema per cui non puoi selezionare file dall'app File nelle versioni sideloaded";
