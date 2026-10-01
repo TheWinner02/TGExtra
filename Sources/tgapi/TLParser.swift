@@ -53,6 +53,26 @@ class TLParser: NSObject {
     private static let messagesSendMultiMedia: Int32 = 469278068
     private static let vectorConstructor: Int32 = 481674261
 
+    private static let automaticScheduleStatusKey = "TGExtraAutomaticScheduleStatus"
+    private static let automaticScheduleRecentIdsKey = "TGExtraAutomaticScheduleRecentIds"
+
+    private static func setAutomaticScheduleStatus(_ value: String) {
+        UserDefaults.standard.set(value, forKey: automaticScheduleStatusKey)
+    }
+
+    private static func recordAutomaticScheduleFunctionId(_ functionId: Int32) {
+        automaticScheduleQueue.sync {
+            var ids = UserDefaults.standard.array(forKey: automaticScheduleRecentIdsKey) as? [NSNumber] ?? []
+            if !ids.contains(where: { $0.int32Value == functionId }) {
+                ids.append(NSNumber(value: functionId))
+                if ids.count > 12 {
+                    ids.removeFirst(ids.count - 12)
+                }
+                UserDefaults.standard.set(ids, forKey: automaticScheduleRecentIdsKey)
+            }
+        }
+    }
+
 	@objc static func handleResponse(_ data: NSData, functionID : NSNumber) -> NSData? {
 		
 		let buffer1 = Buffer(nsData: data)
@@ -405,12 +425,11 @@ class TLParser: NSObject {
         }
     }
 
-    private static func scheduledDate(peer: Api.InputPeer,
+    private static func scheduledDate(peerKey: String,
                                       delay: Int64,
                                       startedAt: TimeInterval? = nil) -> Int32 {
         let now = Int64(Date().timeIntervalSince1970)
         let origin = Int64(startedAt ?? Double(now))
-        let peerKey = String(describing: peer)
 
         return automaticScheduleQueue.sync {
             let previous = lastScheduledDateByPeer[peerKey] ?? 0
@@ -418,6 +437,113 @@ class TLParser: NSObject {
             lastScheduledDateByPeer[peerKey] = value
             return Int32(clamping: value)
         }
+    }
+
+    private static func scheduledDate(peer: Api.InputPeer,
+                                      delay: Int64,
+                                      startedAt: TimeInterval? = nil) -> Int32 {
+        return scheduledDate(peerKey: String(describing: peer), delay: delay, startedAt: startedAt)
+    }
+
+    // Read only the stable wire representation needed to locate schedule_date.
+    // This avoids depending on TGExtra's generated API layer, which predates Telegram 12.9.x.
+    private static func readRawPeerKey(_ reader: BufferReader) -> String? {
+        guard let signature = reader.readInt32() else { return nil }
+        switch signature {
+        case 666680316: // inputPeerChannel
+            guard let id = reader.readInt64(), reader.readInt64() != nil else { return nil }
+            return "channel:\(id)"
+        case -1121318848: // inputPeerChannelFromMessage
+            guard readRawPeerKey(reader) != nil,
+                  reader.readInt32() != nil,
+                  let id = reader.readInt64() else { return nil }
+            return "channelFromMessage:\(id)"
+        case 900291769: // inputPeerChat
+            guard let id = reader.readInt64() else { return nil }
+            return "chat:\(id)"
+        case 2134579434:
+            return "empty"
+        case 2107670217:
+            return "self"
+        case -571955892: // inputPeerUser
+            guard let id = reader.readInt64(), reader.readInt64() != nil else { return nil }
+            return "user:\(id)"
+        case -1468331492: // inputPeerUserFromMessage
+            guard readRawPeerKey(reader) != nil,
+                  reader.readInt32() != nil,
+                  let id = reader.readInt64() else { return nil }
+            return "userFromMessage:\(id)"
+        default:
+            return nil
+        }
+    }
+
+    private static func skipRawReplyTo(_ reader: BufferReader) -> Bool {
+        guard let signature = reader.readInt32() else { return false }
+        switch signature {
+        case 583071445, 1003796418: // old and current inputReplyToMessage
+            guard let flags = reader.readInt32(), reader.readInt32() != nil else { return false }
+            if flags & (1 << 0) != 0 && reader.readInt32() == nil { return false }
+            if flags & (1 << 1) != 0 && readRawPeerKey(reader) == nil { return false }
+            if flags & (1 << 2) != 0 && parseString(reader) == nil { return false }
+            if flags & (1 << 3) != 0 && !skipEntities(reader) { return false }
+            if flags & (1 << 4) != 0 && reader.readInt32() == nil { return false }
+            if signature == 1003796418 {
+                if flags & (1 << 5) != 0 && readRawPeerKey(reader) == nil { return false }
+                if flags & (1 << 6) != 0 && reader.readInt32() == nil { return false }
+                if flags & (1 << 7) != 0 && parseBytes(reader) == nil { return false }
+            }
+            return true
+        case 1484862010: // inputReplyToStory
+            return readRawPeerKey(reader) != nil && reader.readInt32() != nil
+        case 1775660101: // inputReplyToMonoForum
+            return readRawPeerKey(reader) != nil
+        default:
+            return false
+        }
+    }
+
+    private static func prepareRawTextSchedule(_ data: NSData,
+                                               functionId: Int32,
+                                               flags: Int32) -> NSData? {
+        let reader = BufferReader(Buffer(nsData: data))
+        guard reader.readInt32() == functionId, reader.readInt32() == flags,
+              let peerKey = readRawPeerKey(reader) else {
+            setAutomaticScheduleStatus("Testo riconosciuto, lettura destinatario fallita")
+            return nil
+        }
+
+        if flags & (1 << 0) != 0 && !skipRawReplyTo(reader) {
+            setAutomaticScheduleStatus("Testo riconosciuto, lettura risposta fallita")
+            return nil
+        }
+
+        guard let message = parseString(reader), reader.readInt64() != nil else {
+            setAutomaticScheduleStatus("Testo riconosciuto, lettura messaggio fallita")
+            return nil
+        }
+        if flags & (1 << 2) != 0 {
+            guard let _: Api.ReplyMarkup = readObject(reader, as: Api.ReplyMarkup.self) else {
+                setAutomaticScheduleStatus("Testo riconosciuto, lettura tastiera fallita")
+                return nil
+            }
+        }
+        if flags & (1 << 3) != 0 && !skipEntities(reader) {
+            setAutomaticScheduleStatus("Testo riconosciuto, lettura formattazione fallita")
+            return nil
+        }
+
+        let delay = min(60, 15 + Int64(message.count / 200))
+        let date = scheduledDate(peerKey: peerKey, delay: delay)
+        guard let result = patchedPayload(data,
+                                          flags: flags,
+                                          insertionOffset: reader.offset,
+                                          scheduleDate: date) else {
+            setAutomaticScheduleStatus("Testo riconosciuto, modifica payload fallita")
+            return nil
+        }
+        setAutomaticScheduleStatus("Testo programmato: ritardo \(delay)s, data \(date)")
+        return result
     }
 
     private static func patchedPayload(_ data: NSData,
@@ -442,6 +568,7 @@ class TLParser: NSObject {
 
         let reader = BufferReader(Buffer(nsData: data))
         guard let functionId = reader.readInt32() else { return data }
+        recordAutomaticScheduleFunctionId(functionId)
 
         if functionId == uploadSaveFilePart || functionId == uploadSaveBigFilePart {
             recordUploadPart(reader, isBig: functionId == uploadSaveBigFilePart)
@@ -450,11 +577,30 @@ class TLParser: NSObject {
 
         guard messagesSendMessageIds.contains(functionId) ||
               messagesSendMediaIds.contains(functionId) ||
-              functionId == messagesSendMultiMedia,
-              let flags = reader.readInt32(),
-              flags & (1 << 10) == 0,
-              flags & (1 << 17) == 0,
-              let peer: Api.InputPeer = readObject(reader, as: Api.InputPeer.self) else {
+              functionId == messagesSendMultiMedia else {
+            return data
+        }
+
+        setAutomaticScheduleStatus("RPC riconosciuta: \(functionId)")
+        guard let flags = reader.readInt32() else {
+            setAutomaticScheduleStatus("RPC riconosciuta, flags mancanti")
+            return data
+        }
+        if flags & (1 << 10) != 0 {
+            setAutomaticScheduleStatus("Messaggio gia programmato da Telegram")
+            return data
+        }
+        if flags & (1 << 17) != 0 {
+            setAutomaticScheduleStatus("Invio rapido escluso dalla programmazione")
+            return data
+        }
+
+        if messagesSendMessageIds.contains(functionId) {
+            return prepareRawTextSchedule(data, functionId: functionId, flags: flags) ?? data
+        }
+
+        guard let peer: Api.InputPeer = readObject(reader, as: Api.InputPeer.self) else {
+            setAutomaticScheduleStatus("RPC riconosciuta, lettura destinatario fallita")
             return data
         }
 
@@ -468,17 +614,7 @@ class TLParser: NSObject {
         var startedAt: TimeInterval?
         var usedFileIds: [Int64] = []
 
-        if messagesSendMessageIds.contains(functionId) {
-            guard let message = parseString(reader), reader.readInt64() != nil else { return data }
-            delay = min(60, 15 + Int64(message.count / 200))
-
-            if flags & (1 << 2) != 0 {
-                guard let _: Api.ReplyMarkup = readObject(reader, as: Api.ReplyMarkup.self) else {
-                    return data
-                }
-            }
-            if flags & (1 << 3) != 0 && !skipEntities(reader) { return data }
-        } else if messagesSendMediaIds.contains(functionId) {
+        if messagesSendMediaIds.contains(functionId) {
             guard let media: Api.InputMedia = readObject(reader, as: Api.InputMedia.self),
                   parseString(reader) != nil,
                   reader.readInt64() != nil else {
@@ -522,6 +658,8 @@ class TLParser: NSObject {
                                           scheduleDate: date) else {
             return data
         }
+
+        setAutomaticScheduleStatus("Media programmato: ritardo \(delay)s, data \(date)")
 
         if !usedFileIds.isEmpty {
             automaticScheduleQueue.sync {

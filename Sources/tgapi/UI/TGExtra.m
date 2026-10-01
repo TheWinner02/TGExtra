@@ -396,7 +396,20 @@ typedef NS_ENUM(NSInteger, TABLE_VIEW_SECTIONS) {
 		}
 		else if (indexPath.row == 7) {
 			cell.textLabel.text = TGLoc(@"AUTOMATIC_SCHEDULE_TITLE");
-			cell.detailTextLabel.text = TGLoc(@"AUTOMATIC_SCHEDULE_SUBTITLE");
+			NSString *subtitle = TGLoc(@"AUTOMATIC_SCHEDULE_SUBTITLE");
+			NSString *status = [[NSUserDefaults standardUserDefaults] stringForKey:@"TGExtraAutomaticScheduleStatus"];
+			NSArray<NSNumber *> *ids = [[NSUserDefaults standardUserDefaults] arrayForKey:@"TGExtraAutomaticScheduleRecentIds"];
+			if (status.length > 0) {
+				NSMutableString *details = [NSMutableString stringWithFormat:@"%@\nDiagnostica: %@", subtitle, status];
+				if (ids.count > 0) {
+					NSMutableArray<NSString *> *values = [NSMutableArray arrayWithCapacity:ids.count];
+					for (NSNumber *value in ids) [values addObject:value.stringValue];
+					[details appendFormat:@"\nRPC recenti: %@", [values componentsJoinedByString:@", "]];
+				}
+				cell.detailTextLabel.text = details;
+			} else {
+				cell.detailTextLabel.text = subtitle;
+			}
 		}
 
 		UISwitch *toggle = (UISwitch *)cell.accessoryView;
