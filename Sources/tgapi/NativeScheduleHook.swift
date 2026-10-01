@@ -17,7 +17,7 @@ private typealias EnqueueMessagesFunction = @convention(thin) (
     [EnqueueMessage]
 ) -> Signal<[MessageId?], NoError>
 
-private enum NativeScheduleMediaKind {
+private enum NativeScheduleMediaKind: Equatable {
     case text
     case photo
     case video
@@ -127,47 +127,71 @@ private func nativeControllersInViewHierarchy(of window: UIWindow) -> [UIViewCon
     return result
 }
 
-private func finishNativeSendUIAction() -> NativeSendUICleanupResult {
-    let windows = nativeApplicationWindows()
-    var visibleControllerTypes: [String] = []
-    var chatControllerType: String?
+private func nativeAllVisibleControllers() -> [UIViewController] {
+    var result: [UIViewController] = []
+    var seenControllers = Set<ObjectIdentifier>()
 
-    for window in windows where !window.isHidden {
+    for window in nativeApplicationWindows() where !window.isHidden {
         var controllers = nativeControllersInViewHierarchy(of: window)
         if let rootController = window.rootViewController {
             controllers.append(contentsOf: nativeVisibleControllers(from: rootController))
         }
+        for controller in controllers where
+            seenControllers.insert(ObjectIdentifier(controller)).inserted {
+            result.append(controller)
+        }
+    }
+    return result
+}
 
-        var seenControllers = Set<ObjectIdentifier>()
-        controllers = controllers.filter {
-            seenControllers.insert(ObjectIdentifier($0)).inserted
+private func dismissNativeMediaComposer() -> String? {
+    let markers = [
+        "Attachment",
+        "MediaPicker",
+        "MediaEditor",
+        "Gallery",
+        "VideoMessageCamera"
+    ]
+
+    for controller in nativeAllVisibleControllers().reversed() {
+        let controllerType = String(reflecting: type(of: controller))
+        guard markers.contains(where: controllerType.contains) else { continue }
+
+        controller.view.endEditing(true)
+        controller.dismiss(animated: true, completion: nil)
+        return controllerType
+    }
+    return nil
+}
+
+private func finishNativeSendUIAction() -> NativeSendUICleanupResult {
+    var visibleControllerTypes: [String] = []
+    var chatControllerType: String?
+
+    for controller in nativeAllVisibleControllers().reversed() {
+        let controllerType = String(reflecting: type(of: controller))
+        if visibleControllerTypes.count < 8 {
+            visibleControllerTypes.append(controllerType)
+        }
+        guard controllerType.contains("ChatController") else { continue }
+        chatControllerType = controllerType
+        guard let action = nativeStoredValue(
+            named: "layoutActionOnViewTransitionAction",
+            in: controller
+        ) as? () -> Void else {
+            continue
         }
 
-        for controller in controllers.reversed() {
-            let controllerType = String(reflecting: type(of: controller))
-            if visibleControllerTypes.count < 8 {
-                visibleControllerTypes.append(controllerType)
-            }
-            guard controllerType.contains("ChatController") else { continue }
-            chatControllerType = controllerType
-            guard let action = nativeStoredValue(
-                named: "layoutActionOnViewTransitionAction",
-                in: controller
-            ) as? () -> Void else {
-                continue
-            }
+        action()
 
-            action()
-
-            if let chatDisplayNode = nativeStoredValue(named: "chatDisplayNode", in: controller),
-               let replaceAction = nativeStoredValue(
-                   named: "setupSendActionOnViewUpdate",
-                   in: chatDisplayNode
-               ) as? ((() -> Void), Int64?) -> Void {
-                replaceAction({}, nil)
-            }
-            return .restored
+        if let chatDisplayNode = nativeStoredValue(named: "chatDisplayNode", in: controller),
+           let replaceAction = nativeStoredValue(
+               named: "setupSendActionOnViewUpdate",
+               in: chatDisplayNode
+           ) as? ((() -> Void), Int64?) -> Void {
+            replaceAction({}, nil)
         }
+        return .restored
     }
     if let chatControllerType {
         return .chatControllerWithoutAction(chatControllerType)
@@ -257,7 +281,9 @@ private func inspectScheduleValue(_ value: Any,
     }
 }
 
-private func automaticNativeDelay(for messages: [EnqueueMessage]) -> Int64 {
+private func automaticNativePlan(
+    for messages: [EnqueueMessage]
+) -> (delay: Int64, kind: NativeScheduleMediaKind) {
     var analysis = NativeScheduleAnalysis()
     for message in messages {
         inspectScheduleValue(message, label: nil, depth: 0, analysis: &analysis)
@@ -266,13 +292,13 @@ private func automaticNativeDelay(for messages: [EnqueueMessage]) -> Int64 {
     let megabytes = Double(analysis.size) / 1_048_576.0
     switch analysis.kind {
     case .text:
-        return min(180, 60 + Int64(analysis.textLength / 200))
+        return (min(180, 60 + Int64(analysis.textLength / 200)), analysis.kind)
     case .photo:
-        return min(600, 120 + Int64(ceil(megabytes)))
+        return (min(600, 120 + Int64(ceil(megabytes))), analysis.kind)
     case .video:
-        return min(3_600, 120 + Int64(ceil(megabytes * 3.0)))
+        return (min(3_600, 120 + Int64(ceil(megabytes * 3.0))), analysis.kind)
     case .audio, .file:
-        return min(3_600, 120 + Int64(ceil(megabytes * 2.0)))
+        return (min(3_600, 120 + Int64(ceil(megabytes * 2.0))), analysis.kind)
     }
 }
 
@@ -312,7 +338,8 @@ private func nativeEnqueueMessagesHook(_ account: Account,
         "Hook nativo: analisi contenuto",
         forKey: "TGExtraAutomaticScheduleStatus"
     )
-    let delay = automaticNativeDelay(for: messages)
+    let plan = automaticNativePlan(for: messages)
+    let delay = plan.delay
     let scheduleTime = Int32(clamping: Int64(Date().timeIntervalSince1970) + delay)
     let transformedMessages = messages.map { message in
         message.withUpdatedAttributes { attributes in
@@ -332,14 +359,30 @@ private func nativeEnqueueMessagesHook(_ account: Account,
     let signal = original(account, peerId, transformedMessages)
     DispatchQueue.main.asyncAfter(deadline: .now() + 0.15) {
         let cleanupResult = finishNativeSendUIAction()
-        UserDefaults.standard.set(
-            cleanupResult.status,
-            forKey: "TGExtraAutomaticScheduleStatus"
-        )
-        NotificationCenter.default.post(
-            name: automaticScheduleDidEnqueueNotification,
-            object: nil
-        )
+        let finishCleanup = {
+            var status = cleanupResult.status
+            if plan.kind == .photo || plan.kind == .video {
+                if let controllerType = dismissNativeMediaComposer() {
+                    status += "; compositore chiuso (\(controllerType))"
+                } else {
+                    status += "; compositore media non trovato"
+                }
+            }
+            UserDefaults.standard.set(
+                status,
+                forKey: "TGExtraAutomaticScheduleStatus"
+            )
+            NotificationCenter.default.post(
+                name: automaticScheduleDidEnqueueNotification,
+                object: nil
+            )
+        }
+
+        if plan.kind == .photo || plan.kind == .video {
+            DispatchQueue.main.asyncAfter(deadline: .now() + 0.55, execute: finishCleanup)
+        } else {
+            finishCleanup()
+        }
     }
     return signal
 }
