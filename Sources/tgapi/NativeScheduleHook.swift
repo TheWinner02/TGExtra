@@ -32,8 +32,17 @@ private struct NativeScheduleAnalysis {
     var visitedNodes: Int = 0
 }
 
+private struct NativeSchedulePlan {
+    let delay: Int64
+    let kind: NativeScheduleMediaKind
+    let fingerprint: String
+}
+
 private var originalEnqueueMessages: EnqueueMessagesFunction?
 private var telegramCoreHandle: UnsafeMutableRawPointer?
+private let recentMediaSendLock = NSLock()
+private var recentMediaSendKey: String?
+private var recentMediaSendTimestamp: TimeInterval = 0.0
 
 private enum NativeSendUICleanupResult {
     case restored
@@ -164,6 +173,60 @@ private func dismissNativeMediaComposer() -> String? {
     return nil
 }
 
+private func cancelNativeVoiceRecordingUI() -> Bool {
+    let cancelLabels: Set<String> = [
+        "cancel", "annulla", "annuler", "cancelar", "abbrechen", "отмена"
+    ]
+
+    for window in nativeApplicationWindows().reversed() where !window.isHidden {
+        var pendingViews: [UIView] = [window]
+        var viewIndex = 0
+        while viewIndex < pendingViews.count {
+            let view = pendingViews[viewIndex]
+            viewIndex += 1
+            pendingViews.append(contentsOf: view.subviews)
+
+            guard !view.isHidden, view.alpha > 0.01 else { continue }
+            var labels: [String] = []
+            if let accessibilityLabel = view.accessibilityLabel {
+                labels.append(accessibilityLabel)
+            }
+            if let button = view as? UIButton,
+               let title = button.title(for: .normal) {
+                labels.append(title)
+            }
+            guard labels.contains(where: {
+                cancelLabels.contains($0.trimmingCharacters(in: .whitespacesAndNewlines).lowercased())
+            }) else {
+                continue
+            }
+            guard let control = view as? UIControl else { continue }
+            control.sendActions(for: .touchUpInside)
+            return true
+        }
+    }
+    return false
+}
+
+private func shouldSuppressRepeatedMediaSend(
+    peerId: PeerId,
+    plan: NativeSchedulePlan
+) -> Bool {
+    guard plan.kind != .text && plan.kind != .file else { return false }
+
+    let now = ProcessInfo.processInfo.systemUptime
+    let key = "\(String(reflecting: peerId))|\(plan.fingerprint)"
+    recentMediaSendLock.lock()
+    defer { recentMediaSendLock.unlock() }
+
+    if recentMediaSendKey == key, now - recentMediaSendTimestamp < 10.0 {
+        return true
+    }
+    recentMediaSendKey = key
+    recentMediaSendTimestamp = now
+    return false
+}
+
 private func finishNativeSendUIAction() -> NativeSendUICleanupResult {
     var visibleControllerTypes: [String] = []
     var chatControllerType: String?
@@ -283,23 +346,29 @@ private func inspectScheduleValue(_ value: Any,
 
 private func automaticNativePlan(
     for messages: [EnqueueMessage]
-) -> (delay: Int64, kind: NativeScheduleMediaKind) {
+) -> NativeSchedulePlan {
     var analysis = NativeScheduleAnalysis()
     for message in messages {
         inspectScheduleValue(message, label: nil, depth: 0, analysis: &analysis)
     }
 
     let megabytes = Double(analysis.size) / 1_048_576.0
+    let delay: Int64
     switch analysis.kind {
     case .text:
-        return (min(180, 60 + Int64(analysis.textLength / 200)), analysis.kind)
+        delay = min(180, 60 + Int64(analysis.textLength / 200))
     case .photo:
-        return (min(600, 120 + Int64(ceil(megabytes))), analysis.kind)
+        delay = min(600, 120 + Int64(ceil(megabytes)))
     case .video:
-        return (min(3_600, 120 + Int64(ceil(megabytes * 3.0))), analysis.kind)
+        delay = min(3_600, 120 + Int64(ceil(megabytes * 3.0)))
     case .audio, .file:
-        return (min(3_600, 120 + Int64(ceil(megabytes * 2.0))), analysis.kind)
+        delay = min(3_600, 120 + Int64(ceil(megabytes * 2.0)))
     }
+    return NativeSchedulePlan(
+        delay: delay,
+        kind: analysis.kind,
+        fingerprint: "\(analysis.kind)|\(analysis.size)|\(analysis.textLength)|\(messages.count)"
+    )
 }
 
 private func nativeEnqueueMessagesHook(_ account: Account,
@@ -339,6 +408,13 @@ private func nativeEnqueueMessagesHook(_ account: Account,
         forKey: "TGExtraAutomaticScheduleStatus"
     )
     let plan = automaticNativePlan(for: messages)
+    if shouldSuppressRepeatedMediaSend(peerId: peerId, plan: plan) {
+        UserDefaults.standard.set(
+            "Invio media duplicato ignorato; attendo pulizia UI",
+            forKey: "TGExtraAutomaticScheduleStatus"
+        )
+        return .single(Array<MessageId?>(repeating: nil, count: messages.count))
+    }
     let delay = plan.delay
     let scheduleTime = Int32(clamping: Int64(Date().timeIntervalSince1970) + delay)
     let transformedMessages = messages.map { message in
@@ -367,6 +443,10 @@ private func nativeEnqueueMessagesHook(_ account: Account,
                 } else {
                     status += "; compositore media non trovato"
                 }
+            } else if plan.kind == .audio {
+                status += cancelNativeVoiceRecordingUI()
+                    ? "; registrazione chiusa"
+                    : "; comando annulla registrazione non trovato"
             }
             UserDefaults.standard.set(
                 status,
