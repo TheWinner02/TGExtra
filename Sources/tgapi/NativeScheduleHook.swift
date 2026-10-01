@@ -444,9 +444,11 @@ private func nativeEnqueueMessagesHook(_ account: Account,
                     status += "; compositore media non trovato"
                 }
             } else if plan.kind == .audio {
-                status += cancelNativeVoiceRecordingUI()
-                    ? "; registrazione chiusa"
-                    : "; comando annulla registrazione non trovato"
+                if cancelNativeVoiceRecordingUI() {
+                    status += "; registrazione chiusa"
+                } else {
+                    status += "; comando annulla registrazione non trovato"
+                }
             }
             UserDefaults.standard.set(
                 status,
