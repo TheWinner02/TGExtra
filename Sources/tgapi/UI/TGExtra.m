@@ -404,7 +404,9 @@ typedef NS_ENUM(NSInteger, TABLE_VIEW_SECTIONS) {
 				if (ids.count > 0) {
 					NSMutableArray<NSString *> *values = [NSMutableArray arrayWithCapacity:ids.count];
 					for (NSNumber *value in ids) [values addObject:value.stringValue];
-					[details appendFormat:@"\nRPC recenti: %@", [values componentsJoinedByString:@", "]];
+					if (![status hasPrefix:@"Programmazione nativa"] && ![status hasPrefix:@"Hook nativo"]) {
+						[details appendFormat:@"\nRPC recenti: %@", [values componentsJoinedByString:@", "]];
+					}
 				}
 				cell.detailTextLabel.text = details;
 			} else {

@@ -1,0 +1,13 @@
+// swift-interface-format-version: 1.0
+// swift-compiler-version: Apple Swift version 5.10
+// swift-module-flags: -target arm64e-apple-ios14.0 -enable-objc-interop -enable-library-evolution -module-name TelegramCore
+import Swift
+import Postbox
+public class Account {}
+public enum EnqueueMessage {
+  public var attributes: Swift.Array<any Postbox.MessageAttribute> { get }
+  public func withUpdatedAttributes(_ f: (Swift.Array<any Postbox.MessageAttribute>) -> Swift.Array<any Postbox.MessageAttribute>) -> TelegramCore.EnqueueMessage
+}
+public class OutgoingScheduleInfoMessageAttribute : Postbox.MessageAttribute {
+  public init(scheduleTime: Swift.Int32, repeatPeriod: Swift.Int32?)
+}

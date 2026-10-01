@@ -1,0 +1,7 @@
+// swift-interface-format-version: 1.0
+// swift-compiler-version: Apple Swift version 5.10
+// swift-module-flags: -target arm64e-apple-ios14.0 -enable-objc-interop -enable-library-evolution -module-name Postbox
+import Swift
+public protocol MessageAttribute : AnyObject {}
+public struct PeerId {}
+public struct MessageId {}

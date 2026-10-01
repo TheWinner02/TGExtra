@@ -117,7 +117,9 @@ static NSData *TGExtraNeutralizeDeleteUpdates(NSData *data) {
           metadata:(id)metadata
      shortMetadata:(id)shortMetadata
     responseParser:(id (^)(NSData *))responseParser {
-    NSData *effectivePayload = [TLParser prepareAutomaticSchedule:payload] ?: payload;
+    // Automatic scheduling must be applied before Telegram enqueues the message.
+    // Mutating this serialized request creates a mismatch between local and server state.
+    NSData *effectivePayload = payload;
     int32_t functionID = 0;
     if (effectivePayload.length >= sizeof(functionID)) {
         [effectivePayload getBytes:&functionID length:sizeof(functionID)];
