@@ -1,8 +1,8 @@
 import Foundation
-import Darwin
 import Postbox
 import SwiftSignalKit
 import TelegramCore
+import tgapiC
 
 private let enqueueMessagesSymbol = "$s12TelegramCore15enqueueMessages7account6peerId8messages14SwiftSignalKit0J0CySay7Postbox07MessageG0VSgGAF7NoErrorOGAA7AccountC_AI04PeerG0VSayAA07EnqueueM0OGtF"
 
@@ -11,13 +11,6 @@ private typealias EnqueueMessagesFunction = @convention(thin) (
     PeerId,
     [EnqueueMessage]
 ) -> Signal<[MessageId?], NoError>
-
-@_silgen_name("MSHookFunction")
-private func MSHookFunction(
-    _ symbol: UnsafeMutableRawPointer,
-    _ replacement: UnsafeMutableRawPointer,
-    _ original: UnsafeMutablePointer<UnsafeMutableRawPointer?>
-)
 
 private enum NativeScheduleMediaKind {
     case text
@@ -35,7 +28,6 @@ private struct NativeScheduleAnalysis {
 }
 
 private var originalEnqueueMessages: EnqueueMessagesFunction?
-private var telegramCoreHandle: UnsafeMutableRawPointer?
 
 private func raiseKind(_ candidate: NativeScheduleMediaKind,
                        analysis: inout NativeScheduleAnalysis) {
@@ -183,23 +175,13 @@ private func nativeEnqueueMessagesHook(_ account: Account,
 public func TGExtraInstallNativeScheduleHook() {
     guard originalEnqueueMessages == nil else { return }
 
-    telegramCoreHandle = dlopen(nil, RTLD_NOW)
-    let symbol = enqueueMessagesSymbol.withCString { name in
-        dlsym(telegramCoreHandle, name)
-    }
-    guard let symbol else {
-        UserDefaults.standard.set(
-            "Hook nativo non trovato: TelegramCore incompatibile",
-            forKey: "TGExtraAutomaticScheduleStatus"
-        )
-        return
-    }
-
     let replacement: EnqueueMessagesFunction = nativeEnqueueMessagesHook
     let replacementPointer = unsafeBitCast(replacement, to: UnsafeMutableRawPointer.self)
     var originalPointer: UnsafeMutableRawPointer?
-    MSHookFunction(symbol, replacementPointer, &originalPointer)
-    if let originalPointer {
+    let rebound = enqueueMessagesSymbol.withCString { symbolName in
+        TGExtraRebindSymbol(symbolName, replacementPointer, &originalPointer)
+    }
+    if rebound > 0, let originalPointer {
         originalEnqueueMessages = unsafeBitCast(originalPointer, to: EnqueueMessagesFunction.self)
         UserDefaults.standard.set(
             "Hook nativo attivo; in attesa del prossimo invio",
@@ -207,7 +189,7 @@ public func TGExtraInstallNativeScheduleHook() {
         )
     } else {
         UserDefaults.standard.set(
-            "Hook nativo non installato",
+            "Hook nativo non trovato: TelegramCore incompatibile",
             forKey: "TGExtraAutomaticScheduleStatus"
         )
     }
