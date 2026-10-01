@@ -31,6 +31,12 @@ private struct NativeScheduleAnalysis {
 private var originalEnqueueMessages: EnqueueMessagesFunction?
 private var telegramCoreHandle: UnsafeMutableRawPointer?
 
+private func nativeAttributeHasTypeName(_ attribute: MessageAttribute,
+                                        _ typeName: String) -> Bool {
+    let reflectedName = String(reflecting: type(of: attribute))
+    return reflectedName == typeName || reflectedName.hasSuffix(".\(typeName)")
+}
+
 private func raiseKind(_ candidate: NativeScheduleMediaKind,
                        analysis: inout NativeScheduleAnalysis) {
     func priority(_ kind: NativeScheduleMediaKind) -> Int {
@@ -136,8 +142,14 @@ private func nativeEnqueueMessagesHook(_ account: Account,
         return original(account, peerId, messages)
     }
 
+    UserDefaults.standard.set(
+        "Hook nativo: controllo attributi",
+        forKey: "TGExtraAutomaticScheduleStatus"
+    )
     let alreadyScheduled = messages.contains { message in
-        message.attributes.contains { $0 is OutgoingScheduleInfoMessageAttribute }
+        message.attributes.contains {
+            nativeAttributeHasTypeName($0, "OutgoingScheduleInfoMessageAttribute")
+        }
     }
     if alreadyScheduled {
         return original(account, peerId, messages)
@@ -145,19 +157,22 @@ private func nativeEnqueueMessagesHook(_ account: Account,
 
     let hasQuickReply = messages.contains { message in
         message.attributes.contains {
-            String(reflecting: type(of: $0)).contains("OutgoingQuickReplyMessageAttribute")
+            nativeAttributeHasTypeName($0, "OutgoingQuickReplyMessageAttribute")
         }
     }
     if hasQuickReply {
         return original(account, peerId, messages)
     }
 
+    UserDefaults.standard.set(
+        "Hook nativo: analisi contenuto",
+        forKey: "TGExtraAutomaticScheduleStatus"
+    )
     let delay = automaticNativeDelay(for: messages)
     let scheduleTime = Int32(clamping: Int64(Date().timeIntervalSince1970) + delay)
     let transformedMessages = messages.map { message in
         message.withUpdatedAttributes { attributes in
             var attributes = attributes
-            attributes.removeAll { $0 is OutgoingScheduleInfoMessageAttribute }
             attributes.append(OutgoingScheduleInfoMessageAttribute(
                 scheduleTime: scheduleTime,
                 repeatPeriod: nil
