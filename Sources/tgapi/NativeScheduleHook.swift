@@ -6,6 +6,9 @@ import TelegramCore
 import tgapiC
 
 private let enqueueMessagesSymbol = "$s12TelegramCore15enqueueMessages7account6peerId8messages14SwiftSignalKit0J0CySay7Postbox07MessageG0VSgGAF7NoErrorOGAA7AccountC_AI04PeerG0VSayAA07EnqueueM0OGtF"
+private let automaticScheduleDidEnqueueNotification = Notification.Name(
+    "TGExtraAutomaticScheduleDidEnqueue"
+)
 
 private typealias EnqueueMessagesFunction = @convention(thin) (
     Account,
@@ -185,7 +188,14 @@ private func nativeEnqueueMessagesHook(_ account: Account,
         "Programmazione nativa: \(messages.count) messaggi, ritardo \(delay)s, data \(scheduleTime)",
         forKey: "TGExtraAutomaticScheduleStatus"
     )
-    return original(account, peerId, transformedMessages)
+    let signal = original(account, peerId, transformedMessages)
+    DispatchQueue.main.asyncAfter(deadline: .now() + 0.15) {
+        NotificationCenter.default.post(
+            name: automaticScheduleDidEnqueueNotification,
+            object: nil
+        )
+    }
+    return signal
 }
 
 @_cdecl("TGExtraInstallNativeScheduleHook")

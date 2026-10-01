@@ -4,6 +4,7 @@
 #import "../Logger/Logger.h"
 
 #define kMessageDeletedNotification @"TGExtraMessageDeletedRealtime"
+#define kAutomaticScheduleDidEnqueueNotification @"TGExtraAutomaticScheduleDidEnqueue"
 #define kDeletedMessageIconTag 8898
 
 // Menu Open
@@ -112,6 +113,74 @@ static ASDisplayNode *TGExtraFindNodeByClassNamePrefix(ASDisplayNode *node, NSSt
         if (result) return result;
     }
     return nil;
+}
+
+static UIView *TGExtraFindFirstResponder(UIView *view) {
+    if (view.isFirstResponder) return view;
+    for (UIView *subview in view.subviews) {
+        UIView *result = TGExtraFindFirstResponder(subview);
+        if (result) return result;
+    }
+    return nil;
+}
+
+static BOOL TGExtraIsMediaComposerController(UIViewController *controller) {
+    if (!controller) return NO;
+    NSString *className = NSStringFromClass([controller class]);
+    NSArray<NSString *> *markers = @[
+        @"AttachmentController",
+        @"AttachmentFileController",
+        @"MediaPicker",
+        @"MediaEditor",
+        @"GalleryController"
+    ];
+    for (NSString *marker in markers) {
+        if ([className containsString:marker]) return YES;
+    }
+
+    if ([controller isKindOfClass:[UINavigationController class]]) {
+        return TGExtraIsMediaComposerController(
+            ((UINavigationController *)controller).topViewController
+        );
+    }
+    return NO;
+}
+
+static void TGExtraFinishAutomaticScheduleUI(void) {
+    UIWindow *window = UIApplication.sharedApplication.keyWindow;
+    if (!window) return;
+
+    UIView *responder = TGExtraFindFirstResponder(window);
+    if ([responder isKindOfClass:[UITextView class]]) {
+        UITextView *textView = (UITextView *)responder;
+        UITextPosition *start = textView.beginningOfDocument;
+        UITextPosition *end = textView.endOfDocument;
+        UITextRange *range = [textView textRangeFromPosition:start toPosition:end];
+        if (range) [textView replaceRange:range withText:@""];
+        [[NSNotificationCenter defaultCenter]
+            postNotificationName:UITextViewTextDidChangeNotification
+                          object:textView];
+        id<UITextViewDelegate> delegate = textView.delegate;
+        if ([delegate respondsToSelector:@selector(textViewDidChange:)]) {
+            [delegate textViewDidChange:textView];
+        }
+    } else if ([responder isKindOfClass:[UITextField class]]) {
+        UITextField *textField = (UITextField *)responder;
+        textField.text = @"";
+        [textField sendActionsForControlEvents:UIControlEventEditingChanged];
+    }
+
+    UIViewController *controller = window.rootViewController;
+    UIViewController *mediaController = nil;
+    while (controller.presentedViewController) {
+        controller = controller.presentedViewController;
+        if (TGExtraIsMediaComposerController(controller)) {
+            mediaController = controller;
+        }
+    }
+    if (mediaController) {
+        [mediaController dismissViewControllerAnimated:YES completion:nil];
+    }
 }
 
 @interface TGExtraAntiRevokeUpdater : NSObject
@@ -376,6 +445,13 @@ __attribute__((constructor))
 static void hook() {
 	dispatch_after(dispatch_time(DISPATCH_TIME_NOW, (int64_t)(0.1 * NSEC_PER_SEC)), dispatch_get_main_queue(), ^{
 		[TGExtraAntiRevokeUpdater shared];
+		[[NSNotificationCenter defaultCenter]
+		    addObserverForName:kAutomaticScheduleDidEnqueueNotification
+		                object:nil
+		                 queue:[NSOperationQueue mainQueue]
+		            usingBlock:^(__unused NSNotification *notification) {
+		                TGExtraFinishAutomaticScheduleUI();
+		            }];
 	 	%init(
 		    TabBarNode = objc_getClass("TabBarUI.TabBarNode"),
             PeerInfoScreenItemNode = objc_getClass("PeerInfoScreen.PeerInfoScreenItemNode"),
