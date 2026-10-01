@@ -3,5 +3,8 @@
 // swift-module-flags: -target arm64e-apple-ios14.0 -enable-objc-interop -enable-library-evolution -module-name Postbox
 import Swift
 public protocol MessageAttribute : AnyObject {}
-public struct PeerId {}
+@frozen public struct PeerId {
+  public let namespace: Swift.UInt32
+  public let id: Swift.Int64
+}
 public struct MessageId {}
