@@ -563,6 +563,32 @@ class TLParser: NSObject {
         return result
     }
 
+    private static func fallbackMediaScheduleAtEnd(_ data: NSData,
+                                                   flags: Int32,
+                                                   peer: Api.InputPeer,
+                                                   reason: String) -> NSData? {
+        // In the current schema these optional fields follow schedule_date. Appending is
+        // safe only when none of them is present in the original payload.
+        let trailingFieldsMask: Int32 = (1 << 13) | (1 << 17) | (1 << 18) |
+                                              (1 << 21) | (1 << 22) | (1 << 24)
+        guard flags & trailingFieldsMask == 0 else {
+            setAutomaticScheduleStatus("\(reason); fallback non sicuro per flags \(flags)")
+            return nil
+        }
+
+        let delay: Int64 = 20
+        let date = scheduledDate(peer: peer, delay: delay)
+        guard let result = patchedPayload(data,
+                                          flags: flags,
+                                          insertionOffset: UInt(data.length),
+                                          scheduleDate: date) else {
+            setAutomaticScheduleStatus("\(reason); modifica finale fallita")
+            return nil
+        }
+        setAutomaticScheduleStatus("Media programmato con fallback: ritardo \(delay)s, data \(date)")
+        return result
+    }
+
     @objc static func prepareAutomaticSchedule(_ data: NSData) -> NSData? {
         guard UserDefaults.standard.bool(forKey: "TGExtraAutomaticSchedule") else { return data }
 
@@ -606,7 +632,10 @@ class TLParser: NSObject {
 
         if flags & (1 << 0) != 0 {
             guard let _: Api.InputReplyTo = readObject(reader, as: Api.InputReplyTo.self) else {
-                return data
+                return fallbackMediaScheduleAtEnd(data,
+                                                  flags: flags,
+                                                  peer: peer,
+                                                  reason: "Lettura risposta fallita") ?? data
             }
         }
 
@@ -615,10 +644,23 @@ class TLParser: NSObject {
         var usedFileIds: [Int64] = []
 
         if messagesSendMediaIds.contains(functionId) {
-            guard let media: Api.InputMedia = readObject(reader, as: Api.InputMedia.self),
-                  parseString(reader) != nil,
-                  reader.readInt64() != nil else {
-                return data
+            guard let media: Api.InputMedia = readObject(reader, as: Api.InputMedia.self) else {
+                return fallbackMediaScheduleAtEnd(data,
+                                                  flags: flags,
+                                                  peer: peer,
+                                                  reason: "Lettura media fallita") ?? data
+            }
+            guard parseString(reader) != nil else {
+                return fallbackMediaScheduleAtEnd(data,
+                                                  flags: flags,
+                                                  peer: peer,
+                                                  reason: "Lettura didascalia fallita") ?? data
+            }
+            guard reader.readInt64() != nil else {
+                return fallbackMediaScheduleAtEnd(data,
+                                                  flags: flags,
+                                                  peer: peer,
+                                                  reason: "Lettura random id fallita") ?? data
             }
             let info = mediaInfo(media)
             delay = automaticDelay(kind: info.kind, size: info.size)
@@ -627,20 +669,34 @@ class TLParser: NSObject {
 
             if flags & (1 << 2) != 0 {
                 guard let _: Api.ReplyMarkup = readObject(reader, as: Api.ReplyMarkup.self) else {
-                    return data
+                    return fallbackMediaScheduleAtEnd(data,
+                                                      flags: flags,
+                                                      peer: peer,
+                                                      reason: "Lettura tastiera media fallita") ?? data
                 }
             }
-            if flags & (1 << 3) != 0 && !skipEntities(reader) { return data }
+            if flags & (1 << 3) != 0 && !skipEntities(reader) {
+                return fallbackMediaScheduleAtEnd(data,
+                                                  flags: flags,
+                                                  peer: peer,
+                                                  reason: "Lettura formattazione media fallita") ?? data
+            }
         } else {
             guard reader.readInt32() == vectorConstructor,
                   let count = reader.readInt32(), count > 0, count <= 100 else {
-                return data
+                return fallbackMediaScheduleAtEnd(data,
+                                                  flags: flags,
+                                                  peer: peer,
+                                                  reason: "Lettura album fallita") ?? data
             }
 
             var items: [Api.InputSingleMedia] = []
             for _ in 0..<count {
                 guard let item: Api.InputSingleMedia = readObject(reader, as: Api.InputSingleMedia.self) else {
-                    return data
+                    return fallbackMediaScheduleAtEnd(data,
+                                                      flags: flags,
+                                                      peer: peer,
+                                                      reason: "Lettura elemento album fallita") ?? data
                 }
                 items.append(item)
             }
