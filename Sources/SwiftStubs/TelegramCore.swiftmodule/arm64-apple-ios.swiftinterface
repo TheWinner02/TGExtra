@@ -5,6 +5,7 @@ import Swift
 import Postbox
 public class Account {}
 public enum EnqueueMessage {
+  case _tgExtraPlaceholder
   public var attributes: Swift.Array<any Postbox.MessageAttribute> { get }
   public func withUpdatedAttributes(_ f: (Swift.Array<any Postbox.MessageAttribute>) -> Swift.Array<any Postbox.MessageAttribute>) -> TelegramCore.EnqueueMessage
 }
