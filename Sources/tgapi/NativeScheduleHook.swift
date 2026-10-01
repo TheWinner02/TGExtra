@@ -35,6 +35,26 @@ private struct NativeScheduleAnalysis {
 private var originalEnqueueMessages: EnqueueMessagesFunction?
 private var telegramCoreHandle: UnsafeMutableRawPointer?
 
+private enum NativeSendUICleanupResult {
+    case restored
+    case chatControllerWithoutAction(String)
+    case chatControllerNotFound([String])
+
+    var status: String {
+        switch self {
+        case .restored:
+            return "Programmazione nativa completata; UI ripristinata"
+        case let .chatControllerWithoutAction(typeName):
+            return "Pulizia fallback: azione assente in \(typeName)"
+        case let .chatControllerNotFound(typeNames):
+            let visibleTypes = typeNames.prefix(4).joined(separator: ", ")
+            return visibleTypes.isEmpty
+                ? "Pulizia fallback: nessun controller visibile"
+                : "Pulizia fallback: chat non trovata (\(visibleTypes))"
+        }
+    }
+}
+
 private func nativeStoredValue(named name: String, in object: Any) -> Any? {
     var currentMirror: Mirror? = Mirror(reflecting: object)
     while let mirror = currentMirror {
@@ -70,15 +90,66 @@ private func nativeVisibleControllers(from controller: UIViewController) -> [UIV
     return result
 }
 
-private func finishNativeSendUIAction() -> Bool {
-    let windows = UIApplication.shared.connectedScenes
+private func nativeApplicationWindows() -> [UIWindow] {
+    var result = UIApplication.shared.connectedScenes
         .compactMap { $0 as? UIWindowScene }
         .flatMap(\.windows)
+    if let keyWindow = UIApplication.shared.keyWindow {
+        result.append(keyWindow)
+    }
+
+    var seen = Set<ObjectIdentifier>()
+    return result.filter { seen.insert(ObjectIdentifier($0)).inserted }
+}
+
+private func nativeControllersInViewHierarchy(of window: UIWindow) -> [UIViewController] {
+    var result: [UIViewController] = []
+    var seenControllers = Set<ObjectIdentifier>()
+    var pendingViews: [UIView] = [window]
+    var viewIndex = 0
+
+    while viewIndex < pendingViews.count {
+        let view = pendingViews[viewIndex]
+        viewIndex += 1
+        pendingViews.append(contentsOf: view.subviews)
+
+        var responder: UIResponder? = view
+        var responderDepth = 0
+        while let currentResponder = responder, responderDepth < 12 {
+            if let controller = currentResponder as? UIViewController,
+               seenControllers.insert(ObjectIdentifier(controller)).inserted {
+                result.append(controller)
+            }
+            responder = currentResponder.next
+            responderDepth += 1
+        }
+    }
+    return result
+}
+
+private func finishNativeSendUIAction() -> NativeSendUICleanupResult {
+    let windows = nativeApplicationWindows()
+    var visibleControllerTypes: [String] = []
+    var chatControllerType: String?
+
     for window in windows where !window.isHidden {
-        guard let rootController = window.rootViewController else { continue }
-        for controller in nativeVisibleControllers(from: rootController).reversed() {
+        var controllers = nativeControllersInViewHierarchy(of: window)
+        if let rootController = window.rootViewController {
+            controllers.append(contentsOf: nativeVisibleControllers(from: rootController))
+        }
+
+        var seenControllers = Set<ObjectIdentifier>()
+        controllers = controllers.filter {
+            seenControllers.insert(ObjectIdentifier($0)).inserted
+        }
+
+        for controller in controllers.reversed() {
             let controllerType = String(reflecting: type(of: controller))
-            guard controllerType.contains("ChatControllerImpl") else { continue }
+            if visibleControllerTypes.count < 8 {
+                visibleControllerTypes.append(controllerType)
+            }
+            guard controllerType.contains("ChatController") else { continue }
+            chatControllerType = controllerType
             guard let action = nativeStoredValue(
                 named: "layoutActionOnViewTransitionAction",
                 in: controller
@@ -95,10 +166,13 @@ private func finishNativeSendUIAction() -> Bool {
                ) as? ((() -> Void), Int64?) -> Void {
                 replaceAction({}, nil)
             }
-            return true
+            return .restored
         }
     }
-    return false
+    if let chatControllerType {
+        return .chatControllerWithoutAction(chatControllerType)
+    }
+    return .chatControllerNotFound(visibleControllerTypes)
 }
 
 private func nativeAttributeHasTypeName(_ attribute: MessageAttribute,
@@ -257,11 +331,9 @@ private func nativeEnqueueMessagesHook(_ account: Account,
     )
     let signal = original(account, peerId, transformedMessages)
     DispatchQueue.main.asyncAfter(deadline: .now() + 0.15) {
-        let usedNativeCleanup = finishNativeSendUIAction()
+        let cleanupResult = finishNativeSendUIAction()
         UserDefaults.standard.set(
-            usedNativeCleanup
-                ? "Programmazione nativa completata; UI ripristinata"
-                : "Programmazione nativa completata; pulizia UI di fallback",
+            cleanupResult.status,
             forKey: "TGExtraAutomaticScheduleStatus"
         )
         NotificationCenter.default.post(
