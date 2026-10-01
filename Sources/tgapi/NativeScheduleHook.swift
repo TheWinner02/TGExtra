@@ -35,14 +35,10 @@ private struct NativeScheduleAnalysis {
 private struct NativeSchedulePlan {
     let delay: Int64
     let kind: NativeScheduleMediaKind
-    let fingerprint: String
 }
 
 private var originalEnqueueMessages: EnqueueMessagesFunction?
 private var telegramCoreHandle: UnsafeMutableRawPointer?
-private let recentMediaSendLock = NSLock()
-private var recentMediaSendKey: String?
-private var recentMediaSendTimestamp: TimeInterval = 0.0
 
 private enum NativeSendUICleanupResult {
     case restored
@@ -208,25 +204,6 @@ private func cancelNativeVoiceRecordingUI() -> Bool {
     return false
 }
 
-private func shouldSuppressRepeatedMediaSend(
-    peerId: PeerId,
-    plan: NativeSchedulePlan
-) -> Bool {
-    guard plan.kind != .text && plan.kind != .file else { return false }
-
-    let now = ProcessInfo.processInfo.systemUptime
-    let key = "\(String(reflecting: peerId))|\(plan.fingerprint)"
-    recentMediaSendLock.lock()
-    defer { recentMediaSendLock.unlock() }
-
-    if recentMediaSendKey == key, now - recentMediaSendTimestamp < 10.0 {
-        return true
-    }
-    recentMediaSendKey = key
-    recentMediaSendTimestamp = now
-    return false
-}
-
 private func finishNativeSendUIAction() -> NativeSendUICleanupResult {
     var visibleControllerTypes: [String] = []
     var chatControllerType: String?
@@ -366,8 +343,7 @@ private func automaticNativePlan(
     }
     return NativeSchedulePlan(
         delay: delay,
-        kind: analysis.kind,
-        fingerprint: "\(analysis.kind)|\(analysis.size)|\(analysis.textLength)|\(messages.count)"
+        kind: analysis.kind
     )
 }
 
@@ -408,13 +384,6 @@ private func nativeEnqueueMessagesHook(_ account: Account,
         forKey: "TGExtraAutomaticScheduleStatus"
     )
     let plan = automaticNativePlan(for: messages)
-    if shouldSuppressRepeatedMediaSend(peerId: peerId, plan: plan) {
-        UserDefaults.standard.set(
-            "Invio media duplicato ignorato; attendo pulizia UI",
-            forKey: "TGExtraAutomaticScheduleStatus"
-        )
-        return .single(Array<MessageId?>(repeating: nil, count: messages.count))
-    }
     let delay = plan.delay
     let scheduleTime = Int32(clamping: Int64(Date().timeIntervalSince1970) + delay)
     let transformedMessages = messages.map { message in
