@@ -1,5 +1,6 @@
 import Foundation
 import Darwin
+import UIKit
 import Postbox
 import SwiftSignalKit
 import TelegramCore
@@ -33,6 +34,72 @@ private struct NativeScheduleAnalysis {
 
 private var originalEnqueueMessages: EnqueueMessagesFunction?
 private var telegramCoreHandle: UnsafeMutableRawPointer?
+
+private func nativeStoredValue(named name: String, in object: Any) -> Any? {
+    var currentMirror: Mirror? = Mirror(reflecting: object)
+    while let mirror = currentMirror {
+        for child in mirror.children where child.label == name {
+            let optionalMirror = Mirror(reflecting: child.value)
+            if optionalMirror.displayStyle == .optional {
+                return optionalMirror.children.first?.value
+            }
+            return child.value
+        }
+        currentMirror = mirror.superclassMirror
+    }
+    return nil
+}
+
+private func nativeVisibleControllers(from controller: UIViewController) -> [UIViewController] {
+    var result: [UIViewController] = [controller]
+    if let navigationController = controller as? UINavigationController {
+        for child in navigationController.viewControllers {
+            result.append(contentsOf: nativeVisibleControllers(from: child))
+        }
+    } else if let tabBarController = controller as? UITabBarController,
+              let selectedController = tabBarController.selectedViewController {
+        result.append(contentsOf: nativeVisibleControllers(from: selectedController))
+    } else {
+        for child in controller.children {
+            result.append(contentsOf: nativeVisibleControllers(from: child))
+        }
+    }
+    if let presentedController = controller.presentedViewController {
+        result.append(contentsOf: nativeVisibleControllers(from: presentedController))
+    }
+    return result
+}
+
+private func finishNativeSendUIAction() -> Bool {
+    let windows = UIApplication.shared.connectedScenes
+        .compactMap { $0 as? UIWindowScene }
+        .flatMap(\.windows)
+    for window in windows where !window.isHidden {
+        guard let rootController = window.rootViewController else { continue }
+        for controller in nativeVisibleControllers(from: rootController).reversed() {
+            let controllerType = String(reflecting: type(of: controller))
+            guard controllerType.contains("ChatControllerImpl") else { continue }
+            guard let action = nativeStoredValue(
+                named: "layoutActionOnViewTransitionAction",
+                in: controller
+            ) as? () -> Void else {
+                continue
+            }
+
+            action()
+
+            if let chatDisplayNode = nativeStoredValue(named: "chatDisplayNode", in: controller),
+               let replaceAction = nativeStoredValue(
+                   named: "setupSendActionOnViewUpdate",
+                   in: chatDisplayNode
+               ) as? ((() -> Void), Int64?) -> Void {
+                replaceAction({}, nil)
+            }
+            return true
+        }
+    }
+    return false
+}
 
 private func nativeAttributeHasTypeName(_ attribute: MessageAttribute,
                                         _ typeName: String) -> Bool {
@@ -190,6 +257,13 @@ private func nativeEnqueueMessagesHook(_ account: Account,
     )
     let signal = original(account, peerId, transformedMessages)
     DispatchQueue.main.asyncAfter(deadline: .now() + 0.15) {
+        let usedNativeCleanup = finishNativeSendUIAction()
+        UserDefaults.standard.set(
+            usedNativeCleanup
+                ? "Programmazione nativa completata; UI ripristinata"
+                : "Programmazione nativa completata; pulizia UI di fallback",
+            forKey: "TGExtraAutomaticScheduleStatus"
+        )
         NotificationCenter.default.post(
             name: automaticScheduleDidEnqueueNotification,
             object: nil
