@@ -1,4 +1,5 @@
 import Foundation
+import Darwin
 import Postbox
 import SwiftSignalKit
 import TelegramCore
@@ -28,6 +29,7 @@ private struct NativeScheduleAnalysis {
 }
 
 private var originalEnqueueMessages: EnqueueMessagesFunction?
+private var telegramCoreHandle: UnsafeMutableRawPointer?
 
 private func raiseKind(_ candidate: NativeScheduleMediaKind,
                        analysis: inout NativeScheduleAnalysis) {
@@ -177,7 +179,10 @@ public func TGExtraInstallNativeScheduleHook() {
 
     let replacement: EnqueueMessagesFunction = nativeEnqueueMessagesHook
     let replacementPointer = unsafeBitCast(replacement, to: UnsafeMutableRawPointer.self)
-    var originalPointer: UnsafeMutableRawPointer?
+    telegramCoreHandle = dlopen(nil, RTLD_NOW)
+    var originalPointer = enqueueMessagesSymbol.withCString { symbolName in
+        dlsym(telegramCoreHandle, symbolName)
+    }
     let rebound = enqueueMessagesSymbol.withCString { symbolName in
         TGExtraRebindSymbol(symbolName, replacementPointer, &originalPointer)
     }
