@@ -94,6 +94,9 @@
 "AUTOMATIC_SCHEDULE_TITLE" = "Automatic Scheduling";
 "AUTOMATIC_SCHEDULE_SUBTITLE" = "Schedule outgoing messages automatically using a delay based on content type and file size.";
 
+"DEFAULT_SILENT_MESSAGES_TITLE" = "Send Silently by Default";
+"DEFAULT_SILENT_MESSAGES_SUBTITLE" = "Send outgoing messages without notification sound by default.";
+
 /* File Picker */
 "FIX_FILE_PICKER_TITLE" = "Fix File Picker";
 "FIX_FILE_PICKER_SUBTITLE" = "Fixes the issue where you can't pick files from Files App On Sideloaded Versions";

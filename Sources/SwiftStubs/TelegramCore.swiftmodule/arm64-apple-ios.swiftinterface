@@ -12,3 +12,12 @@ public enum EnqueueMessage {
 public class OutgoingScheduleInfoMessageAttribute : Postbox.MessageAttribute {
   public init(scheduleTime: Swift.Int32, repeatPeriod: Swift.Int32?)
 }
+public struct NotificationInfoMessageAttributeFlags : Swift.OptionSet {
+  public var rawValue: Swift.Int32
+  public init(rawValue: Swift.Int32)
+  public static let muted: TelegramCore.NotificationInfoMessageAttributeFlags
+}
+public class NotificationInfoMessageAttribute : Postbox.MessageAttribute {
+  public let flags: TelegramCore.NotificationInfoMessageAttributeFlags
+  public init(flags: TelegramCore.NotificationInfoMessageAttributeFlags)
+}

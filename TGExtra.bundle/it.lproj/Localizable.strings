@@ -96,6 +96,9 @@
 "AUTOMATIC_SCHEDULE_TITLE" = "Programmazione automatica";
 "AUTOMATIC_SCHEDULE_SUBTITLE" = "Programma automaticamente i messaggi usando un ritardo basato sul tipo di contenuto e sulla dimensione del file.";
 
+"DEFAULT_SILENT_MESSAGES_TITLE" = "Invio silenzioso predefinito";
+"DEFAULT_SILENT_MESSAGES_SUBTITLE" = "Invia i messaggi senza suono di notifica per impostazione predefinita.";
+
 /* File Picker */
 "FIX_FILE_PICKER_TITLE" = "Correggi selezione file";
 "FIX_FILE_PICKER_SUBTITLE" = "Corregge il problema per cui non puoi selezionare file dall'app File nelle versioni sideloaded";

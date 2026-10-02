@@ -277,6 +277,27 @@ private func nativeAttributeHasTypeName(_ attribute: MessageAttribute,
     return reflectedName == typeName || reflectedName.hasSuffix(".\(typeName)")
 }
 
+private func attributesWithDefaultSilentMode(
+    _ attributes: [MessageAttribute]
+) -> [MessageAttribute] {
+    var updatedAttributes = attributes
+    for index in updatedAttributes.indices {
+        guard let notificationInfo = updatedAttributes[index]
+            as? NotificationInfoMessageAttribute else {
+            continue
+        }
+        if notificationInfo.flags.contains(.muted) {
+            return updatedAttributes
+        }
+        updatedAttributes[index] = NotificationInfoMessageAttribute(
+            flags: notificationInfo.flags.union(.muted)
+        )
+        return updatedAttributes
+    }
+    updatedAttributes.append(NotificationInfoMessageAttribute(flags: .muted))
+    return updatedAttributes
+}
+
 private func raiseKind(_ candidate: NativeScheduleMediaKind,
                        analysis: inout NativeScheduleAnalysis) {
     func priority(_ kind: NativeScheduleMediaKind) -> Int {
@@ -389,52 +410,53 @@ private func nativeEnqueueMessagesHook(_ account: Account,
     guard let original = originalEnqueueMessages else {
         fatalError("TGExtra native scheduler original function is unavailable")
     }
-    guard UserDefaults.standard.bool(forKey: "TGExtraAutomaticSchedule"), !messages.isEmpty else {
+    let automaticScheduleEnabled = UserDefaults.standard.bool(
+        forKey: "TGExtraAutomaticSchedule"
+    )
+    let defaultSilentEnabled = UserDefaults.standard.bool(
+        forKey: "TGExtraDefaultSilentMessages"
+    )
+    guard !messages.isEmpty,
+          automaticScheduleEnabled || defaultSilentEnabled else {
         return original(account, peerId, messages)
     }
 
-    UserDefaults.standard.set(
-        "Hook nativo: controllo attributi",
-        forKey: "TGExtraAutomaticScheduleStatus"
-    )
     let alreadyScheduled = messages.contains { message in
         message.attributes.contains {
             nativeAttributeHasTypeName($0, "OutgoingScheduleInfoMessageAttribute")
         }
     }
-    if alreadyScheduled {
-        return original(account, peerId, messages)
-    }
-
     let hasQuickReply = messages.contains { message in
         message.attributes.contains {
             nativeAttributeHasTypeName($0, "OutgoingQuickReplyMessageAttribute")
         }
     }
-    if hasQuickReply {
-        return original(account, peerId, messages)
+    let shouldSchedule = automaticScheduleEnabled && !alreadyScheduled && !hasQuickReply
+    let plan = shouldSchedule ? automaticNativePlan(for: messages) : nil
+    let scheduleTime = plan.map {
+        Int32(clamping: Int64(Date().timeIntervalSince1970) + $0.delay)
     }
-
-    UserDefaults.standard.set(
-        "Hook nativo: analisi contenuto",
-        forKey: "TGExtraAutomaticScheduleStatus"
-    )
-    let plan = automaticNativePlan(for: messages)
-    let delay = plan.delay
-    let scheduleTime = Int32(clamping: Int64(Date().timeIntervalSince1970) + delay)
     let transformedMessages = messages.map { message in
         message.withUpdatedAttributes { attributes in
             var attributes = attributes
-            attributes.append(OutgoingScheduleInfoMessageAttribute(
-                scheduleTime: scheduleTime,
-                repeatPeriod: nil
-            ))
+            if defaultSilentEnabled {
+                attributes = attributesWithDefaultSilentMode(attributes)
+            }
+            if let scheduleTime {
+                attributes.append(OutgoingScheduleInfoMessageAttribute(
+                    scheduleTime: scheduleTime,
+                    repeatPeriod: nil
+                ))
+            }
             return attributes
         }
     }
 
+    guard let plan, let scheduleTime else {
+        return original(account, peerId, transformedMessages)
+    }
     UserDefaults.standard.set(
-        "Programmazione nativa: \(messages.count) messaggi, ritardo \(delay)s, data \(scheduleTime)",
+        "Programmazione nativa: \(messages.count) messaggi, ritardo \(plan.delay)s, data \(scheduleTime)",
         forKey: "TGExtraAutomaticScheduleStatus"
     )
     let signal = original(account, peerId, transformedMessages)

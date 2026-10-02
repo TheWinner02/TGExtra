@@ -186,7 +186,7 @@ typedef NS_ENUM(NSInteger, TABLE_VIEW_SECTIONS) {
 		case READ_RECEIPT:
 		   return 2;
 		case MISC:
-		   return 8;
+		   return 9;
 		case FILE_FIXER:
 		   return 2;
 		case FAKE_LOCATION:
@@ -412,6 +412,10 @@ typedef NS_ENUM(NSInteger, TABLE_VIEW_SECTIONS) {
 			} else {
 				cell.detailTextLabel.text = subtitle;
 			}
+		}
+		else if (indexPath.row == 8) {
+			cell.textLabel.text = TGLoc(@"DEFAULT_SILENT_MESSAGES_TITLE");
+			cell.detailTextLabel.text = TGLoc(@"DEFAULT_SILENT_MESSAGES_SUBTITLE");
 		}
 
 		UISwitch *toggle = (UISwitch *)cell.accessoryView;
@@ -693,6 +697,7 @@ typedef NS_ENUM(NSInteger, TABLE_VIEW_SECTIONS) {
                 case 5: return kConfirmCalls;
                 case 6: return kHideStories;
                 case 7: return kAutomaticSchedule;
+                case 8: return kDefaultSilentMessages;
                 default: return nil;
             }
         case 3:
