@@ -3,6 +3,7 @@
 #import <mach-o/loader.h>
 #import <mach-o/nlist.h>
 #import <mach/mach.h>
+#import <dlfcn.h>
 #import <string.h>
 
 #define TG_BIND_OPCODE_MASK                             0xF0
@@ -314,6 +315,45 @@ int TGExtraRebindSymbol(const char *symbolName, void *replacement, void **origin
         }
     }
     return replaced;
+}
+
+struct TGExtraDyldInterposeTuple {
+    const void *replacement;
+    const void *replacee;
+};
+
+typedef void (*TGExtraDyldDynamicInterposeFunction)(
+    const struct mach_header *header,
+    const struct TGExtraDyldInterposeTuple tuples[],
+    size_t count
+);
+
+int TGExtraDynamicInterpose(void *replacee, void *replacement) {
+    if (!replacee || !replacement) return 0;
+
+    TGExtraDyldDynamicInterposeFunction dynamicInterpose =
+        (TGExtraDyldDynamicInterposeFunction)dlsym(RTLD_DEFAULT,
+                                                   "dyld_dynamic_interpose");
+    if (!dynamicInterpose) {
+        dynamicInterpose =
+            (TGExtraDyldDynamicInterposeFunction)dlsym(RTLD_DEFAULT,
+                                                       "_dyld_dynamic_interpose");
+    }
+    if (!dynamicInterpose) return 0;
+
+    const struct TGExtraDyldInterposeTuple tuple = {
+        .replacement = replacement,
+        .replacee = replacee
+    };
+    int interposedImages = 0;
+    const uint32_t imageCount = _dyld_image_count();
+    for (uint32_t imageIndex = 0; imageIndex < imageCount; imageIndex++) {
+        const struct mach_header *header = _dyld_get_image_header(imageIndex);
+        if (!header) continue;
+        dynamicInterpose(header, &tuple, 1);
+        interposedImages += 1;
+    }
+    return interposedImages;
 }
 
 extern void TGExtraInstallNativeScheduleHook(void);

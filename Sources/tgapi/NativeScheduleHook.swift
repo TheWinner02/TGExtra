@@ -439,15 +439,25 @@ public func TGExtraInstallNativeScheduleHook() {
     let rebound = enqueueMessagesSymbol.withCString { symbolName in
         TGExtraRebindSymbol(symbolName, replacementPointer, &originalPointer)
     }
-    if rebound > 0, let originalPointer {
+    var interposed = 0
+    if rebound == 0, let originalPointer {
+        interposed = TGExtraDynamicInterpose(originalPointer, replacementPointer)
+    }
+    if (rebound > 0 || interposed > 0), let originalPointer {
         originalEnqueueMessages = unsafeBitCast(originalPointer, to: EnqueueMessagesFunction.self)
+        let hookMode = rebound > 0 ? "binding" : "interpose"
         UserDefaults.standard.set(
-            "Hook nativo attivo; in attesa del prossimo invio",
+            "Hook nativo attivo (\(hookMode)); in attesa del prossimo invio",
+            forKey: "TGExtraAutomaticScheduleStatus"
+        )
+    } else if originalPointer != nil {
+        UserDefaults.standard.set(
+            "Simbolo TelegramCore trovato, ma nessun metodo di hook compatibile",
             forKey: "TGExtraAutomaticScheduleStatus"
         )
     } else {
         UserDefaults.standard.set(
-            "Hook nativo non trovato: TelegramCore incompatibile",
+            "Simbolo enqueueMessages assente: ABI TelegramCore differente",
             forKey: "TGExtraAutomaticScheduleStatus"
         )
     }
