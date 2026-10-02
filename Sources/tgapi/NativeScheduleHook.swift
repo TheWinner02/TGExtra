@@ -439,7 +439,7 @@ public func TGExtraInstallNativeScheduleHook() {
     let rebound = enqueueMessagesSymbol.withCString { symbolName in
         TGExtraRebindSymbol(symbolName, replacementPointer, &originalPointer)
     }
-    var interposed = 0
+    var interposed: Int32 = 0
     if rebound == 0, let originalPointer {
         interposed = TGExtraDynamicInterpose(originalPointer, replacementPointer)
     }
