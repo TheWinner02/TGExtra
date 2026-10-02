@@ -48,13 +48,58 @@ class TLParser: NSObject {
         -68013046,   // fbf234ea
         -33170278,   // fe05dc9a
         1376532592,  // 520c3870
-        1415369050   // 545cd15a
+        1415369050,  // 545cd15a
+        -17526942    // fef17f62 (current Nicegram / Telegram)
     ]
     private static let messagesSendMultiMedia: Int32 = 469278068
+    private static let silentOutgoingFunctionIds: Set<Int32> =
+        messagesSendMessageIds.union(messagesSendMediaIds).union([
+            messagesSendMultiMedia,
+            -1060145594, // messages.sendInlineBotResult
+            -1147165579, // messages.forwardMessages (older layers)
+            326126204    // messages.forwardMessages (current layer)
+        ])
     private static let vectorConstructor: Int32 = 481674261
 
     private static let automaticScheduleStatusKey = "TGExtraAutomaticScheduleStatus"
     private static let automaticScheduleRecentIdsKey = "TGExtraAutomaticScheduleRecentIds"
+
+    @objc static func prepareDefaultSilent(_ data: NSData) -> NSData? {
+        guard UserDefaults.standard.bool(forKey: "TGExtraDefaultSilentMessages"),
+              data.length >= 8 else {
+            return data
+        }
+
+        var functionId: Int32 = 0
+        var flags: Int32 = 0
+        data.getBytes(&functionId, range: NSRange(location: 0, length: 4))
+        guard silentOutgoingFunctionIds.contains(functionId) else {
+            return data
+        }
+        data.getBytes(&flags, range: NSRange(location: 4, length: 4))
+
+        let silentFlag: Int32 = 1 << 5
+        guard flags & silentFlag == 0 else {
+            UserDefaults.standard.set(
+                "Invio già silenzioso (RPC \(functionId))",
+                forKey: "TGExtraDefaultSilentStatus"
+            )
+            return data
+        }
+
+        var updatedFlags = flags | silentFlag
+        let result = NSMutableData(data: data as Data)
+        result.replaceBytes(
+            in: NSRange(location: 4, length: 4),
+            withBytes: &updatedFlags,
+            length: MemoryLayout<Int32>.size
+        )
+        UserDefaults.standard.set(
+            "Invio silenzioso applicato (RPC \(functionId))",
+            forKey: "TGExtraDefaultSilentStatus"
+        )
+        return result
+    }
 
     private static func setAutomaticScheduleStatus(_ value: String) {
         UserDefaults.standard.set(value, forKey: automaticScheduleStatusKey)

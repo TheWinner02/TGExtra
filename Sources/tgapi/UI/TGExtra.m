@@ -415,7 +415,12 @@ typedef NS_ENUM(NSInteger, TABLE_VIEW_SECTIONS) {
 		}
 		else if (indexPath.row == 8) {
 			cell.textLabel.text = TGLoc(@"DEFAULT_SILENT_MESSAGES_TITLE");
-			cell.detailTextLabel.text = TGLoc(@"DEFAULT_SILENT_MESSAGES_SUBTITLE");
+			NSString *subtitle = TGLoc(@"DEFAULT_SILENT_MESSAGES_SUBTITLE");
+			NSString *status = [[NSUserDefaults standardUserDefaults]
+				stringForKey:@"TGExtraDefaultSilentStatus"];
+			cell.detailTextLabel.text = status.length > 0
+				? [NSString stringWithFormat:@"%@\nDiagnostica: %@", subtitle, status]
+				: subtitle;
 		}
 
 		UISwitch *toggle = (UISwitch *)cell.accessoryView;

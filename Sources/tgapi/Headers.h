@@ -9,6 +9,7 @@
 + (BOOL)isDeleted:(NSNumber *)messageId;
 + (void)rememberDeletedMessageIds:(NSArray<NSNumber *> *)messageIds;
 + (NSData *)prepareAutomaticSchedule:(NSData *)data;
++ (NSData *)prepareDefaultSilent:(NSData *)data;
 @end
 
 @interface MTRpcError : NSObject
