@@ -30,25 +30,30 @@ private struct NativeScheduleAnalysis {
     var size: Int64 = 0
     var textLength: Int = 0
     var visitedNodes: Int = 0
+    var correlationIds = Set<Int64>()
 }
 
 private struct NativeSchedulePlan {
     let delay: Int64
-    let kind: NativeScheduleMediaKind
+    let correlationIds: Set<Int64>
 }
 
 private var originalEnqueueMessages: EnqueueMessagesFunction?
 private var telegramCoreHandle: UnsafeMutableRawPointer?
 
 private enum NativeSendUICleanupResult {
-    case restored
+    case restored(Int)
     case chatControllerWithoutAction(String)
     case chatControllerNotFound([String])
 
     var status: String {
         switch self {
-        case .restored:
-            return "Programmazione nativa completata; UI ripristinata"
+        case let .restored(transitionCount):
+            if transitionCount == 0 {
+                return "Programmazione nativa completata; UI ripristinata"
+            } else {
+                return "Programmazione nativa completata; UI ripristinata con \(transitionCount) transizione/i"
+            }
         case let .chatControllerWithoutAction(typeName):
             return "Pulizia fallback: azione assente in \(typeName)"
         case let .chatControllerNotFound(typeNames):
@@ -149,62 +154,41 @@ private func nativeAllVisibleControllers() -> [UIViewController] {
     return result
 }
 
-private func dismissNativeMediaComposer() -> String? {
-    let markers = [
-        "Attachment",
-        "MediaPicker",
-        "MediaEditor",
-        "Gallery",
-        "VideoMessageCamera"
-    ]
+private func invokeNativePendingTransitions(_ pendingItems: Any,
+                                            correlationIds: Set<Int64>) -> Int {
+    guard !correlationIds.isEmpty else { return 0 }
 
-    for controller in nativeAllVisibleControllers().reversed() {
-        let controllerType = String(reflecting: type(of: controller))
-        guard markers.contains(where: controllerType.contains) else { continue }
+    let dictionaryMirror = Mirror(reflecting: pendingItems)
+    guard dictionaryMirror.displayStyle == .dictionary else { return 0 }
 
-        controller.view.endEditing(true)
-        controller.dismiss(animated: true, completion: nil)
-        return controllerType
-    }
-    return nil
-}
-
-private func cancelNativeVoiceRecordingUI() -> Bool {
-    let cancelLabels: Set<String> = [
-        "cancel", "annulla", "annuler", "cancelar", "abbrechen", "отмена"
-    ]
-
-    for window in nativeApplicationWindows().reversed() where !window.isHidden {
-        var pendingViews: [UIView] = [window]
-        var viewIndex = 0
-        while viewIndex < pendingViews.count {
-            let view = pendingViews[viewIndex]
-            viewIndex += 1
-            pendingViews.append(contentsOf: view.subviews)
-
-            guard !view.isHidden, view.alpha > 0.01 else { continue }
-            var labels: [String] = []
-            if let accessibilityLabel = view.accessibilityLabel {
-                labels.append(accessibilityLabel)
-            }
-            if let button = view as? UIButton,
-               let title = button.title(for: .normal) {
-                labels.append(title)
-            }
-            guard labels.contains(where: {
-                cancelLabels.contains($0.trimmingCharacters(in: .whitespacesAndNewlines).lowercased())
-            }) else {
-                continue
-            }
-            guard let control = view as? UIControl else { continue }
-            control.sendActions(for: .touchUpInside)
-            return true
+    var actions: [() -> Void] = []
+    for entry in dictionaryMirror.children {
+        let entryFields = Array(Mirror(reflecting: entry.value).children)
+        guard entryFields.count >= 2,
+              let correlationId = entryFields[0].value as? Int64,
+              correlationIds.contains(correlationId) else {
+            continue
         }
+
+        let pendingValueFields = Array(Mirror(reflecting: entryFields[1].value).children)
+        guard pendingValueFields.count >= 2,
+              let action = pendingValueFields[1].value as? () -> Void else {
+            continue
+        }
+        actions.append(action)
     }
-    return false
+
+    // Copy the closures before invoking them: the native completion can mutate
+    // the transition node (and therefore currentPendingItems) while it runs.
+    for action in actions {
+        action()
+    }
+    return actions.count
 }
 
-private func finishNativeSendUIAction() -> NativeSendUICleanupResult {
+private func finishNativeSendUIAction(
+    correlationIds: Set<Int64>
+) -> NativeSendUICleanupResult {
     var visibleControllerTypes: [String] = []
     var chatControllerType: String?
 
@@ -215,10 +199,30 @@ private func finishNativeSendUIAction() -> NativeSendUICleanupResult {
         }
         guard controllerType.contains("ChatController") else { continue }
         chatControllerType = controllerType
+
+        var transitionCount = 0
+        if let chatDisplayNode = nativeStoredValue(named: "chatDisplayNode", in: controller),
+           let messageTransitionNode = nativeStoredValue(
+               named: "messageTransitionNode",
+               in: chatDisplayNode
+           ),
+           let pendingItems = nativeStoredValue(
+               named: "currentPendingItems",
+               in: messageTransitionNode
+           ) {
+            transitionCount = invokeNativePendingTransitions(
+                pendingItems,
+                correlationIds: correlationIds
+            )
+        }
+
         guard let action = nativeStoredValue(
             named: "layoutActionOnViewTransitionAction",
             in: controller
         ) as? () -> Void else {
+            if transitionCount > 0 {
+                return .restored(transitionCount)
+            }
             continue
         }
 
@@ -231,7 +235,7 @@ private func finishNativeSendUIAction() -> NativeSendUICleanupResult {
            ) as? ((() -> Void), Int64?) -> Void {
             replaceAction({}, nil)
         }
-        return .restored
+        return .restored(transitionCount)
     }
     if let chatControllerType {
         return .chatControllerWithoutAction(chatControllerType)
@@ -311,6 +315,10 @@ private func inspectScheduleValue(_ value: Any,
         }
     }
 
+    if loweredLabel == "correlationid", let correlationId = value as? Int64 {
+        analysis.correlationIds.insert(correlationId)
+    }
+
     let mirror = Mirror(reflecting: value)
     for child in mirror.children {
         let childLabel = child.label == "some" ? label : child.label
@@ -343,7 +351,7 @@ private func automaticNativePlan(
     }
     return NativeSchedulePlan(
         delay: delay,
-        kind: analysis.kind
+        correlationIds: analysis.correlationIds
     )
 }
 
@@ -403,37 +411,17 @@ private func nativeEnqueueMessagesHook(_ account: Account,
     )
     let signal = original(account, peerId, transformedMessages)
     DispatchQueue.main.asyncAfter(deadline: .now() + 0.15) {
-        let cleanupResult = finishNativeSendUIAction()
-        let finishCleanup = {
-            var status = cleanupResult.status
-            if plan.kind == .photo || plan.kind == .video {
-                if let controllerType = dismissNativeMediaComposer() {
-                    status += "; compositore chiuso (\(controllerType))"
-                } else {
-                    status += "; compositore media non trovato"
-                }
-            } else if plan.kind == .audio {
-                if cancelNativeVoiceRecordingUI() {
-                    status += "; registrazione chiusa"
-                } else {
-                    status += "; comando annulla registrazione non trovato"
-                }
-            }
-            UserDefaults.standard.set(
-                status,
-                forKey: "TGExtraAutomaticScheduleStatus"
-            )
-            NotificationCenter.default.post(
-                name: automaticScheduleDidEnqueueNotification,
-                object: nil
-            )
-        }
-
-        if plan.kind == .photo || plan.kind == .video {
-            DispatchQueue.main.asyncAfter(deadline: .now() + 0.55, execute: finishCleanup)
-        } else {
-            finishCleanup()
-        }
+        let cleanupResult = finishNativeSendUIAction(
+            correlationIds: plan.correlationIds
+        )
+        UserDefaults.standard.set(
+            cleanupResult.status,
+            forKey: "TGExtraAutomaticScheduleStatus"
+        )
+        NotificationCenter.default.post(
+            name: automaticScheduleDidEnqueueNotification,
+            object: nil
+        )
     }
     return signal
 }
