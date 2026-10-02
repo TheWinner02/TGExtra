@@ -4,6 +4,7 @@
 #import <mach-o/nlist.h>
 #import <mach/mach.h>
 #import <dlfcn.h>
+#import <stdlib.h>
 #import <string.h>
 
 #define TG_BIND_OPCODE_MASK                             0xF0
@@ -21,6 +22,29 @@
 #define TG_BIND_OPCODE_DO_BIND_ADD_ADDR_ULEB            0xA0
 #define TG_BIND_OPCODE_DO_BIND_ADD_ADDR_IMM_SCALED      0xB0
 #define TG_BIND_OPCODE_DO_BIND_ULEB_TIMES_SKIPPING_ULEB 0xC0
+
+#ifndef LC_DYLD_CHAINED_FIXUPS
+#define LC_DYLD_CHAINED_FIXUPS 0x80000034
+#endif
+
+#define TG_DYLD_CHAINED_IMPORT              1
+#define TG_DYLD_CHAINED_IMPORT_ADDEND       2
+#define TG_DYLD_CHAINED_IMPORT_ADDEND64     3
+#define TG_DYLD_CHAINED_PTR_64              2
+#define TG_DYLD_CHAINED_PTR_64_OFFSET       6
+#define TG_DYLD_CHAINED_PTR_START_NONE      0xFFFF
+#define TG_DYLD_CHAINED_PTR_START_MULTI     0x8000
+#define TG_DYLD_CHAINED_PTR_START_LAST      0x8000
+
+struct TGExtraChainedFixupsHeader {
+    uint32_t fixupsVersion;
+    uint32_t startsOffset;
+    uint32_t importsOffset;
+    uint32_t symbolsOffset;
+    uint32_t importsCount;
+    uint32_t importsFormat;
+    uint32_t symbolsFormat;
+};
 
 static uint64_t TGExtraReadULEB128(const uint8_t **cursor, const uint8_t *end) {
     uint64_t result = 0;
@@ -69,6 +93,282 @@ static BOOL TGExtraSymbolMatches(const char *candidate, const char *symbolName) 
     if (!candidate) return NO;
     if (candidate[0] == '_') candidate++;
     return strcmp(candidate, symbolName) == 0;
+}
+
+static BOOL TGExtraRangeIsValid(uint64_t offset,
+                                uint64_t length,
+                                uint64_t totalLength) {
+    return offset <= totalLength && length <= totalLength - offset;
+}
+
+static int TGExtraWalkChainedFixup(const uint8_t *fileBytes,
+                                   size_t fileLength,
+                                   uint64_t fileOffset,
+                                   uintptr_t runtimeAddress,
+                                   uint16_t pointerFormat,
+                                   const uint8_t *targetImports,
+                                   uint32_t importsCount,
+                                   void *replacement,
+                                   void **original) {
+    int replaced = 0;
+    uint32_t iterations = 0;
+    while (TGExtraRangeIsValid(fileOffset, sizeof(uint64_t), fileLength) &&
+           iterations++ < 100000) {
+        uint64_t rawPointer = 0;
+        memcpy(&rawPointer, fileBytes + fileOffset, sizeof(rawPointer));
+
+        uint32_t next = 0;
+        BOOL isBind = NO;
+        uint32_t ordinal = UINT32_MAX;
+        uint32_t stride = 0;
+        if (pointerFormat == TG_DYLD_CHAINED_PTR_64 ||
+            pointerFormat == TG_DYLD_CHAINED_PTR_64_OFFSET) {
+            isBind = (rawPointer >> 63) != 0;
+            next = (uint32_t)((rawPointer >> 51) & 0xFFF);
+            ordinal = (uint32_t)(rawPointer & 0xFFFFFF);
+            stride = 4;
+        } else {
+            break;
+        }
+
+        if (isBind && ordinal < importsCount && targetImports[ordinal]) {
+            replaced += TGExtraReplaceBinding((void **)runtimeAddress,
+                                              replacement,
+                                              original);
+        }
+        if (next == 0) break;
+
+        uint64_t advance = (uint64_t)next * stride;
+        fileOffset += advance;
+        runtimeAddress += (uintptr_t)advance;
+    }
+    return replaced;
+}
+
+static int TGExtraRebindChainedFixups(const struct mach_header_64 *runtimeHeader,
+                                      intptr_t slide,
+                                      const char *imagePath,
+                                      const char *symbolName,
+                                      void *replacement,
+                                      void **original) {
+    (void)slide;
+    if (!runtimeHeader || !imagePath || !symbolName) return 0;
+    // Normal message sends cross into TelegramCore from TelegramUI. Limiting the
+    // on-disk chained-fixup scan avoids mapping every framework at app launch.
+    if (!strstr(imagePath, "TelegramUI")) return 0;
+
+    NSString *path = [NSString stringWithUTF8String:imagePath];
+    if (!path) return 0;
+    NSData *fileData = [NSData dataWithContentsOfFile:path
+                                              options:NSDataReadingMappedIfSafe
+                                                error:nil];
+    if (!fileData || fileData.length < sizeof(struct mach_header_64)) return 0;
+
+    const uint8_t *fileBytes = (const uint8_t *)fileData.bytes;
+    const size_t fileLength = fileData.length;
+    const struct mach_header_64 *fileHeader =
+        (const struct mach_header_64 *)fileBytes;
+    if (fileHeader->magic != MH_MAGIC_64) return 0;
+
+    const struct linkedit_data_command *fixupsCommand = NULL;
+    const struct segment_command_64 *segments[64] = { 0 };
+    uint32_t segmentCount = 0;
+    uint64_t commandOffset = sizeof(struct mach_header_64);
+    for (uint32_t index = 0; index < fileHeader->ncmds; index++) {
+        if (!TGExtraRangeIsValid(commandOffset,
+                                 sizeof(struct load_command),
+                                 fileLength)) return 0;
+        const struct load_command *command =
+            (const struct load_command *)(fileBytes + commandOffset);
+        if (command->cmdsize < sizeof(struct load_command) ||
+            !TGExtraRangeIsValid(commandOffset, command->cmdsize, fileLength)) {
+            return 0;
+        }
+        if (command->cmd == LC_SEGMENT_64 && segmentCount < 64) {
+            segments[segmentCount++] =
+                (const struct segment_command_64 *)command;
+        } else if (command->cmd == LC_DYLD_CHAINED_FIXUPS &&
+                   command->cmdsize >= sizeof(struct linkedit_data_command)) {
+            fixupsCommand = (const struct linkedit_data_command *)command;
+        }
+        commandOffset += command->cmdsize;
+    }
+    if (!fixupsCommand ||
+        !TGExtraRangeIsValid(fixupsCommand->dataoff,
+                             fixupsCommand->datasize,
+                             fileLength) ||
+        fixupsCommand->datasize < sizeof(struct TGExtraChainedFixupsHeader)) {
+        return 0;
+    }
+
+    const uint8_t *fixupsBase = fileBytes + fixupsCommand->dataoff;
+    const uint64_t fixupsLength = fixupsCommand->datasize;
+    const struct TGExtraChainedFixupsHeader *fixupsHeader =
+        (const struct TGExtraChainedFixupsHeader *)fixupsBase;
+    if (fixupsHeader->symbolsFormat != 0 ||
+        fixupsHeader->importsCount == 0 ||
+        fixupsHeader->importsCount > 1000000 ||
+        !TGExtraRangeIsValid(fixupsHeader->symbolsOffset, 1, fixupsLength)) {
+        return 0;
+    }
+
+    uint32_t importSize = 0;
+    switch (fixupsHeader->importsFormat) {
+        case TG_DYLD_CHAINED_IMPORT:
+            importSize = 4;
+            break;
+        case TG_DYLD_CHAINED_IMPORT_ADDEND:
+            importSize = 8;
+            break;
+        case TG_DYLD_CHAINED_IMPORT_ADDEND64:
+            importSize = 16;
+            break;
+        default:
+            return 0;
+    }
+    if (!TGExtraRangeIsValid(fixupsHeader->importsOffset,
+                             (uint64_t)fixupsHeader->importsCount * importSize,
+                             fixupsLength)) {
+        return 0;
+    }
+
+    uint8_t *targetImports = calloc(fixupsHeader->importsCount, sizeof(uint8_t));
+    if (!targetImports) return 0;
+    const uint8_t *importsBase = fixupsBase + fixupsHeader->importsOffset;
+    const char *symbolsBase =
+        (const char *)(fixupsBase + fixupsHeader->symbolsOffset);
+    const uint64_t symbolsLength = fixupsLength - fixupsHeader->symbolsOffset;
+    BOOL foundImport = NO;
+    for (uint32_t index = 0; index < fixupsHeader->importsCount; index++) {
+        uint64_t nameOffset = 0;
+        if (fixupsHeader->importsFormat == TG_DYLD_CHAINED_IMPORT_ADDEND64) {
+            uint64_t rawImport = 0;
+            memcpy(&rawImport, importsBase + ((uint64_t)index * importSize),
+                   sizeof(rawImport));
+            nameOffset = rawImport >> 32;
+        } else {
+            uint32_t rawImport = 0;
+            memcpy(&rawImport, importsBase + ((uint64_t)index * importSize),
+                   sizeof(rawImport));
+            nameOffset = rawImport >> 9;
+        }
+        if (nameOffset >= symbolsLength) continue;
+        const char *candidate = symbolsBase + nameOffset;
+        if (!memchr(candidate, '\0', (size_t)(symbolsLength - nameOffset))) continue;
+        if (TGExtraSymbolMatches(candidate, symbolName)) {
+            targetImports[index] = 1;
+            foundImport = YES;
+        }
+    }
+    if (!foundImport) {
+        free(targetImports);
+        return 0;
+    }
+
+    if (!TGExtraRangeIsValid(fixupsHeader->startsOffset,
+                             sizeof(uint32_t),
+                             fixupsLength)) {
+        free(targetImports);
+        return 0;
+    }
+    const uint8_t *startsBase = fixupsBase + fixupsHeader->startsOffset;
+    const uint64_t startsLength = fixupsLength - fixupsHeader->startsOffset;
+    uint32_t startsSegmentCount = 0;
+    memcpy(&startsSegmentCount, startsBase, sizeof(startsSegmentCount));
+    if (startsSegmentCount > segmentCount ||
+        !TGExtraRangeIsValid(sizeof(uint32_t),
+                             (uint64_t)startsSegmentCount * sizeof(uint32_t),
+                             startsLength)) {
+        free(targetImports);
+        return 0;
+    }
+
+    int replaced = 0;
+    for (uint32_t segmentIndex = 0;
+         segmentIndex < startsSegmentCount;
+         segmentIndex++) {
+        uint32_t segmentInfoOffset = 0;
+        memcpy(&segmentInfoOffset,
+               startsBase + sizeof(uint32_t) +
+                   ((uint64_t)segmentIndex * sizeof(uint32_t)),
+               sizeof(segmentInfoOffset));
+        if (segmentInfoOffset == 0 ||
+            !TGExtraRangeIsValid(segmentInfoOffset, 22, startsLength)) {
+            continue;
+        }
+
+        const uint8_t *segmentInfo = startsBase + segmentInfoOffset;
+        uint32_t segmentInfoSize = 0;
+        uint16_t pageSize = 0;
+        uint16_t pointerFormat = 0;
+        uint64_t runtimeSegmentOffset = 0;
+        uint16_t pageCount = 0;
+        memcpy(&segmentInfoSize, segmentInfo, sizeof(segmentInfoSize));
+        memcpy(&pageSize, segmentInfo + 4, sizeof(pageSize));
+        memcpy(&pointerFormat, segmentInfo + 6, sizeof(pointerFormat));
+        memcpy(&runtimeSegmentOffset, segmentInfo + 8,
+               sizeof(runtimeSegmentOffset));
+        memcpy(&pageCount, segmentInfo + 20, sizeof(pageCount));
+        if (pointerFormat != TG_DYLD_CHAINED_PTR_64 &&
+            pointerFormat != TG_DYLD_CHAINED_PTR_64_OFFSET) {
+            continue;
+        }
+        if (segmentInfoSize < 22 ||
+            !TGExtraRangeIsValid(segmentInfoOffset,
+                                 segmentInfoSize,
+                                 startsLength) ||
+            !TGExtraRangeIsValid(22,
+                                 (uint64_t)pageCount * sizeof(uint16_t),
+                                 segmentInfoSize)) {
+            continue;
+        }
+
+        const struct segment_command_64 *segment = segments[segmentIndex];
+        const uint16_t *pageStarts = (const uint16_t *)(segmentInfo + 22);
+        const uint32_t pageStartsCapacity =
+            (segmentInfoSize - 22) / sizeof(uint16_t);
+        for (uint32_t pageIndex = 0; pageIndex < pageCount; pageIndex++) {
+            uint16_t pageStart = pageStarts[pageIndex];
+            if (pageStart == TG_DYLD_CHAINED_PTR_START_NONE) continue;
+
+            uint32_t overflowIndex = UINT32_MAX;
+            if (pageStart & TG_DYLD_CHAINED_PTR_START_MULTI) {
+                overflowIndex = pageStart & ~TG_DYLD_CHAINED_PTR_START_MULTI;
+            }
+            do {
+                BOOL isLast = YES;
+                uint16_t chainStart = pageStart;
+                if (overflowIndex != UINT32_MAX) {
+                    if (overflowIndex >= pageStartsCapacity) break;
+                    chainStart = pageStarts[overflowIndex++];
+                    isLast = (chainStart & TG_DYLD_CHAINED_PTR_START_LAST) != 0;
+                    chainStart &= ~TG_DYLD_CHAINED_PTR_START_LAST;
+                }
+
+                const uint64_t pageOffset = (uint64_t)pageIndex * pageSize;
+                const uint64_t fileOffset = segment->fileoff +
+                    pageOffset + chainStart;
+                const uintptr_t runtimeAddress = (uintptr_t)runtimeHeader +
+                    (uintptr_t)runtimeSegmentOffset +
+                    (uintptr_t)pageOffset + chainStart;
+                replaced += TGExtraWalkChainedFixup(
+                    fileBytes,
+                    fileLength,
+                    fileOffset,
+                    runtimeAddress,
+                    pointerFormat,
+                    targetImports,
+                    fixupsHeader->importsCount,
+                    replacement,
+                    original);
+
+                if (overflowIndex == UINT32_MAX || isLast) break;
+            } while (YES);
+        }
+    }
+
+    free(targetImports);
+    return replaced;
 }
 
 static int TGExtraRebindDyldInfo(const uint8_t *stream,
@@ -248,6 +548,14 @@ int TGExtraRebindSymbol(const char *symbolName, void *replacement, void **origin
             }
             cursor += command->cmdsize;
         }
+
+        replaced += TGExtraRebindChainedFixups(
+            header,
+            slide,
+            _dyld_get_image_name(imageIndex),
+            symbolName,
+            replacement,
+            original);
 
         if (!linkedit) continue;
         uintptr_t linkeditBase = (uintptr_t)slide + linkedit->vmaddr - linkedit->fileoff;
