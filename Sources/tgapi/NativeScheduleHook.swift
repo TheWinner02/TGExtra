@@ -80,6 +80,30 @@ private func nativeStoredValue(named name: String, in object: Any) -> Any? {
     return nil
 }
 
+private func nativeStoredValue(typeNameContaining fragment: String,
+                               in object: Any) -> Any? {
+    var currentMirror: Mirror? = Mirror(reflecting: object)
+    while let mirror = currentMirror {
+        for child in mirror.children {
+            let optionalMirror = Mirror(reflecting: child.value)
+            let value: Any
+            if optionalMirror.displayStyle == .optional {
+                guard let unwrapped = optionalMirror.children.first?.value else {
+                    continue
+                }
+                value = unwrapped
+            } else {
+                value = child.value
+            }
+            if String(reflecting: type(of: value)).contains(fragment) {
+                return value
+            }
+        }
+        currentMirror = mirror.superclassMirror
+    }
+    return nil
+}
+
 private func nativeVisibleControllers(from controller: UIViewController) -> [UIViewController] {
     var result: [UIViewController] = [controller]
     if let navigationController = controller as? UINavigationController {
@@ -156,27 +180,32 @@ private func nativeAllVisibleControllers() -> [UIViewController] {
 
 private func invokeNativePendingTransitions(_ pendingItems: Any,
                                             correlationIds: Set<Int64>) -> Int {
-    guard !correlationIds.isEmpty else { return 0 }
-
     let dictionaryMirror = Mirror(reflecting: pendingItems)
     guard dictionaryMirror.displayStyle == .dictionary else { return 0 }
 
-    var actions: [() -> Void] = []
+    var matchingActions: [() -> Void] = []
+    var allActions: [() -> Void] = []
     for entry in dictionaryMirror.children {
         let entryFields = Array(Mirror(reflecting: entry.value).children)
-        guard entryFields.count >= 2,
-              let correlationId = entryFields[0].value as? Int64,
-              correlationIds.contains(correlationId) else {
-            continue
-        }
-
+        guard entryFields.count >= 2 else { continue }
         let pendingValueFields = Array(Mirror(reflecting: entryFields[1].value).children)
         guard pendingValueFields.count >= 2,
               let action = pendingValueFields[1].value as? () -> Void else {
             continue
         }
-        actions.append(action)
+        allActions.append(action)
+        if let correlationId = entryFields[0].value as? Int64,
+           correlationIds.contains(correlationId) {
+            matchingActions.append(action)
+        }
     }
+
+    // Optimized Swift builds may omit the EnqueueMessage tuple labels used to
+    // recover correlationId. currentPendingItems belongs to the active send and
+    // is replaced on every non-grouped transition, so falling back to all of its
+    // native completions is both scoped and preferable to leaving the composer
+    // stuck forever for a scheduled message that never enters normal history.
+    let actions = matchingActions.isEmpty ? allActions : matchingActions
 
     // Copy the closures before invoking them: the native completion can mutate
     // the transition node (and therefore currentPendingItems) while it runs.
@@ -201,11 +230,10 @@ private func finishNativeSendUIAction(
         chatControllerType = controllerType
 
         var transitionCount = 0
-        if let chatDisplayNode = nativeStoredValue(named: "chatDisplayNode", in: controller),
-           let messageTransitionNode = nativeStoredValue(
-               named: "messageTransitionNode",
-               in: chatDisplayNode
-           ),
+        if let chatDisplayNode = nativeStoredValue(named: "chatDisplayNode", in: controller) ??
+                nativeStoredValue(typeNameContaining: "ChatControllerNode", in: controller),
+           let messageTransitionNode = nativeStoredValue(named: "messageTransitionNode", in: chatDisplayNode) ??
+                nativeStoredValue(typeNameContaining: "ChatMessageTransitionNode", in: chatDisplayNode),
            let pendingItems = nativeStoredValue(
                named: "currentPendingItems",
                in: messageTransitionNode
