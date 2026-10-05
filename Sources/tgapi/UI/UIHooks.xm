@@ -8,6 +8,86 @@
 #define kAutomaticScheduleDidEnqueueNotification @"TGExtraAutomaticScheduleDidEnqueue"
 #define kDeletedMessageIconTag 8898
 static char TGExtraHiddenAdViewStateKey;
+static char TGExtraHiddenStoryViewStateKey;
+static NSHashTable<UIView *> *TGExtraStoryViews;
+
+static void TGExtraApplyStoryVisibility(UIView *view, NSString *className) {
+    if (!view || ![NSThread isMainThread]) return;
+    NSDictionary *state = objc_getAssociatedObject(view, &TGExtraHiddenStoryViewStateKey);
+    if (!state && [className rangeOfString:@"Story"].location == NSNotFound) return;
+    // An ASDisplayNode's backing UIView has a generic name; keep its owner's
+    // classification when UIKit lays out that same view separately.
+    if (state && [className containsString:@"ASDisplayView"]) className = state[@"class"];
+    BOOL matches = [TGExtraStoryFilter isStoryDecorationClass:className];
+    if (!matches && !state) return;
+    BOOL inViewer = NO;
+    for (UIView *ancestor = view.superview; ancestor; ancestor = ancestor.superview) {
+        NSString *name = NSStringFromClass(ancestor.class);
+        if ([name containsString:@"StoryContainer"] || [name containsString:@"StoryItemSet"]) {
+            inViewer = YES;
+            break;
+        }
+    }
+    BOOL shouldHide = matches && !inViewer &&
+        [[NSUserDefaults standardUserDefaults] boolForKey:kHideStories];
+    if (shouldHide) {
+        if (!TGExtraStoryViews) TGExtraStoryViews = [NSHashTable weakObjectsHashTable];
+        [TGExtraStoryViews addObject:view];
+        if (!state) {
+            objc_setAssociatedObject(view, &TGExtraHiddenStoryViewStateKey,
+                @{@"hidden": @(view.hidden), @"alpha": @(view.alpha),
+                  @"accessibility": @(view.accessibilityElementsHidden),
+                  @"interaction": @(view.userInteractionEnabled), @"class": className},
+                OBJC_ASSOCIATION_RETAIN_NONATOMIC);
+        }
+        if (!view.hidden) view.hidden = YES;
+        if (view.alpha != 0.0) view.alpha = 0.0;
+        view.accessibilityElementsHidden = YES;
+        view.userInteractionEnabled = NO;
+    } else if (state) {
+        view.hidden = [state[@"hidden"] boolValue];
+        view.alpha = [state[@"alpha"] doubleValue];
+        view.accessibilityElementsHidden = [state[@"accessibility"] boolValue];
+        view.userInteractionEnabled = [state[@"interaction"] boolValue];
+        objc_setAssociatedObject(view, &TGExtraHiddenStoryViewStateKey, nil, OBJC_ASSOCIATION_RETAIN_NONATOMIC);
+    }
+}
+
+void TGExtraRefreshStoryVisibility(void) {
+    if (![NSThread isMainThread]) {
+        dispatch_async(dispatch_get_main_queue(), ^{ TGExtraRefreshStoryVisibility(); });
+        return;
+    }
+    // Include detached views so turning the option off also restores cached cells.
+    for (UIView *view in TGExtraStoryViews.allObjects) {
+        NSDictionary *state = objc_getAssociatedObject(view, &TGExtraHiddenStoryViewStateKey);
+        TGExtraApplyStoryVisibility(view, state[@"class"] ?: NSStringFromClass(view.class));
+    }
+    NSMutableArray<UIView *> *pending = [NSMutableArray array];
+    for (UIScene *scene in UIApplication.sharedApplication.connectedScenes) {
+        if ([scene isKindOfClass:UIWindowScene.class]) {
+            [pending addObjectsFromArray:((UIWindowScene *)scene).windows];
+        }
+    }
+    UIWindow *keyWindow = UIApplication.sharedApplication.keyWindow;
+    if (keyWindow && ![pending containsObject:keyWindow]) [pending addObject:keyWindow];
+    for (NSUInteger index = 0; index < pending.count; index++) {
+        UIView *view = pending[index];
+        TGExtraApplyStoryVisibility(view, NSStringFromClass(view.class));
+        [pending addObjectsFromArray:view.subviews];
+    }
+}
+
+%hook UIView
+- (void)layoutSubviews {
+    %orig;
+    TGExtraApplyStoryVisibility(self, NSStringFromClass(self.class));
+}
+- (void)didMoveToWindow {
+    %orig;
+    TGExtraApplyStoryVisibility(self, NSStringFromClass(self.class));
+}
+%end
 
 // Menu Open
 @interface ASDisplayNode : NSObject
@@ -289,15 +369,7 @@ static void TGExtraFinishAutomaticScheduleUI(void) {
         objc_setAssociatedObject(self.view, &TGExtraHiddenAdViewStateKey, nil, OBJC_ASSOCIATION_RETAIN_NONATOMIC);
     }
 
-    if ([[NSUserDefaults standardUserDefaults] boolForKey:kHideStories] &&
-        ([className containsString:@"StoryPeerList"] ||
-         [className containsString:@"StoryContainer"] ||
-         [className containsString:@"StorySetIndicator"] ||
-         [className containsString:@"AvatarStoryIndicator"])) {
-        self.view.hidden = YES;
-        self.view.alpha = 0.0;
-        return;
-    }
+    TGExtraApplyStoryVisibility(self.view, className);
 
     if (![className containsString:@"ChatMessage"] ||
         ![className containsString:@"ItemNode"]) {

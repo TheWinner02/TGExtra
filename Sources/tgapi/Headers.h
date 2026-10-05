@@ -24,6 +24,11 @@
 + (BOOL)nodeIsAdvertisement:(id)node;
 @end
 
+@interface TGExtraStoryFilter : NSObject
++ (BOOL)isStoryDecorationClass:(NSString *)name;
+@end
+void TGExtraRefreshStoryVisibility(void);
+
 @interface MTRpcError : NSObject
 - (id)initWithErrorCode:(int)code errorDescription:(id)desc;
 @end

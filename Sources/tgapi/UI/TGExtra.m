@@ -685,6 +685,9 @@ typedef NS_ENUM(NSInteger, TABLE_VIEW_SECTIONS) {
 
     if (switchKey) {
         [[NSUserDefaults standardUserDefaults] setBool:sender.isOn forKey:switchKey];
+        if ([switchKey isEqualToString:kHideStories]) {
+            TGExtraRefreshStoryVisibility();
+        }
     }
 }
 

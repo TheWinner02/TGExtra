@@ -40,6 +40,12 @@ jobs:
                 swiftc Sources/tgapi/AdvertisementFilter.swift scripts/test-ad-filter.swift -o "$RUNNER_TEMP/tgextra-ad-tests"
                 "$RUNNER_TEMP/tgextra-ad-tests"
 
+            - name: Test story decoration detection
+              shell: bash
+              run: |
+                swiftc Sources/tgapi/StoryVisibility.swift scripts/test-story-visibility.swift -o "$RUNNER_TEMP/tgextra-story-tests"
+                "$RUNNER_TEMP/tgextra-story-tests"
+
             - name: Set up Theos
               uses: waruhachi/theos-action@v2.4.6
               with:
