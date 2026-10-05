@@ -8,12 +8,8 @@ public protocol MessageAttribute : AnyObject {}
   public let namespace: Swift.UInt32
   public let id: Swift.Int64
   public init(_ value: Swift.Int64)
-  public func toInt64() -> Swift.Int64
 }
 public struct MessageId {
-  public let peerId: PeerId
-  public let namespace: Swift.Int32
-  public let id: Swift.Int32
   public init(peerId: PeerId, namespace: Swift.Int32, id: Swift.Int32)
 }
 public protocol Media : AnyObject {}

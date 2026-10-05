@@ -240,8 +240,39 @@ class TGExtraDeletedMessageCleaner: NSObject {
     // Full native IDs observed in chat, scoped by database, never by raw ID alone.
     private static var observedIds: [String: [String: MessageId]] = [:]
 
-    private static func key(_ id: MessageId) -> String {
-        return "\(id.peerId.toInt64()):\(id.namespace):\(id.id)"
+    private struct ReflectedId {
+        let peer: Int64
+        let namespace: Int32
+        let id: Int32
+        var key: String { "\(peer):\(namespace):\(id)" }
+    }
+
+    // Do not invoke PeerId getters/toInt64 through the layout-only scheduling
+    // stub. Real Postbox types are resilient and use a different getter ABI.
+    private static func components(_ id: MessageId) -> ReflectedId? {
+        guard let peer = nativeStoredValue(named: "peerId", in: id),
+              let namespace = nativeStoredValue(named: "namespace", in: id) as? Int32,
+              let rawId = nativeStoredValue(named: "id", in: id) as? Int32,
+              let peerNamespace = nativeStoredValue(named: "namespace", in: peer),
+              let peerId = nativeStoredValue(named: "id", in: peer) else { return nil }
+        let ns = (peerNamespace as? UInt32) ?? (nativeStoredValue(named: "rawValue", in: peerNamespace) as? UInt32)
+        let raw = (peerId as? Int64) ?? (nativeStoredValue(named: "rawValue", in: peerId) as? Int64)
+        guard let ns, ns <= 7, let raw, raw >= 0, UInt64(raw) < (UInt64(1) << 61) else { return nil }
+        let bits = UInt64(raw)
+        let packed = (bits & 0xffffffff) | (UInt64(ns) << 32) | ((bits >> 32) << 35)
+        return ReflectedId(peer: Int64(bitPattern: packed), namespace: namespace, id: rawId)
+    }
+
+    private static func matches(_ id: ReflectedId, record: [String: Any]) -> Bool {
+        guard id.id == (record["id"] as? NSNumber)?.int32Value, id.namespace == 0 else { return false }
+        if let peer = (record["peer"] as? NSNumber)?.int64Value {
+            return id.peer == peer && id.namespace == (record["namespace"] as? NSNumber)?.int32Value
+        }
+        let packed = UInt64(bitPattern: id.peer)
+        let namespace = (packed >> 32) & 7
+        let channel = (record["channel"] as? NSNumber)?.int64Value ?? 0
+        let peer = (packed & 0xffffffff) | ((packed >> 35) << 32)
+        return channel == 0 ? namespace < 2 : channel > 0 && namespace == 2 && peer == UInt64(channel)
     }
 
     private static func messageIds(in value: Any, depth: Int = 0) -> [MessageId] {
@@ -297,7 +328,9 @@ class TGExtraDeletedMessageCleaner: NSObject {
             if let item,
                let entry = retainedMessageAccounts().first(where: { $0.0 === account }) {
                 for id in messageIds(in: item) {
-                    observedIds[entry.2, default: [:]][key(id)] = id
+                    if let fields = components(id) {
+                        observedIds[entry.2, default: [:]][fields.key] = id
+                    }
                 }
                 enrichRecords(path: entry.2)
             }
@@ -308,17 +341,11 @@ class TGExtraDeletedMessageCleaner: NSObject {
         var records = UserDefaults.standard.array(forKey: recordsKey) as? [[String: Any]] ?? []
         var changed = false
         for index in records.indices where (records[index]["account"] as? String) == path && records[index]["peer"] == nil {
-            guard let raw = (records[index]["id"] as? NSNumber)?.int32Value,
-                  let channel = (records[index]["channel"] as? NSNumber)?.int64Value else { continue }
-            let matches = (observedIds[path] ?? [:]).values.filter { id in
-                guard id.id == raw, id.namespace == 0 else { return false }
-                let packed = UInt64(bitPattern: id.peerId.toInt64())
-                let namespace = (packed >> 32) & 7
-                let peer = (packed & 0xffffffff) | ((packed >> 35) << 32)
-                return channel == 0 ? namespace == 0 || namespace == 1 : namespace == 2 && peer == UInt64(channel)
+            let matches = (observedIds[path] ?? [:]).values.compactMap { components($0) }.filter { id in
+                Self.matches(id, record: records[index])
             }
             if matches.count == 1, let id = matches.first {
-                records[index]["peer"] = NSNumber(value: id.peerId.toInt64())
+                records[index]["peer"] = NSNumber(value: id.peer)
                 records[index]["namespace"] = NSNumber(value: id.namespace)
                 changed = true
             }
@@ -376,40 +403,28 @@ class TGExtraDeletedMessageCleaner: NSObject {
             return
         }
         clearing = true
+        // Capture on the main queue; never access the UI registry on Postbox's queue.
+        let observed = Array((observedIds[path] ?? [:]).values)
         let signal = account.1.transaction(userInteractive: true, ignoreDisabled: false, { transaction -> [String] in
             let globalIds = records.filter { ($0["channel"] as? NSNumber)?.int64Value == 0 }
                 .compactMap { ($0["id"] as? NSNumber)?.int32Value }
             var ids = transaction.messageIdsForGlobalIds(globalIds)
             for record in records {
-                if let peer = (record["peer"] as? NSNumber)?.int64Value,
-                   let namespace = (record["namespace"] as? NSNumber)?.int32Value,
-                   let id = (record["id"] as? NSNumber)?.int32Value {
-                    ids.append(MessageId(peerId: PeerId(peer), namespace: namespace, id: id))
-                    continue
+                let candidates = observed.filter { id in
+                    guard let fields = components(id) else { return false }
+                    return matches(fields, record: record)
                 }
-                guard let channel = (record["channel"] as? NSNumber)?.int64Value, channel > 0,
-                      let id = (record["id"] as? NSNumber)?.int32Value else { continue }
-                // PeerId's public packed representation: namespace 2 (cloud
-                // channel) plus its full 61-bit id, including supergroups.
-                let bits = UInt64(channel)
-                let packed = (bits & 0xffffffff) | (UInt64(2) << 32) | ((bits >> 32) << 35)
-                ids.append(MessageId(peerId: PeerId(Int64(bitPattern: packed)), namespace: 0, id: id))
+                if candidates.count == 1 { ids.append(contentsOf: candidates) }
             }
-            ids = ids.filter { transaction.getMessage($0) != nil }
             var seen = Set<String>()
-            ids = ids.filter { seen.insert(key($0)).inserted }
+            ids = ids.filter {
+                guard let fields = components($0), records.contains(where: { matches(fields, record: $0) }) else { return false }
+                return seen.insert(fields.key).inserted && transaction.getMessage($0) != nil
+            }
             let tokens = records.compactMap { record -> String? in
-                guard let raw = (record["id"] as? NSNumber)?.int32Value else { return nil }
                 let found = ids.contains { id in
-                    guard id.id == raw else { return false }
-                    if let peer = (record["peer"] as? NSNumber)?.int64Value {
-                        return id.peerId.toInt64() == peer && id.namespace == (record["namespace"] as? NSNumber)?.int32Value
-                    }
-                    let packed = UInt64(bitPattern: id.peerId.toInt64())
-                    let namespace = (packed >> 32) & 7
-                    let channel = (record["channel"] as? NSNumber)?.int64Value ?? 0
-                    let peer = (packed & 0xffffffff) | ((packed >> 35) << 32)
-                    return channel == 0 ? namespace < 2 : namespace == 2 && peer == UInt64(channel)
+                    guard let fields = components(id) else { return false }
+                    return matches(fields, record: record)
                 }
                 return found ? record["token"] as? String : nil
             }
