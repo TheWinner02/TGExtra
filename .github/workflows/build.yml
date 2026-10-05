@@ -28,6 +28,12 @@ jobs:
               with:
                 ref: ${{ github.event_name == 'release' && github.event.release.target_commitish || github.ref }}
 
+            - name: Test scheduling delays
+              shell: bash
+              run: |
+                swiftc Sources/tgapi/AutomaticScheduleTiming.swift scripts/test-schedule-timing.swift -o "$RUNNER_TEMP/tgextra-timing-tests"
+                "$RUNNER_TEMP/tgextra-timing-tests"
+
             - name: Set up Theos
               uses: waruhachi/theos-action@v2.4.6
               with:

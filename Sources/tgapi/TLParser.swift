@@ -467,16 +467,15 @@ class TLParser: NSObject {
     }
 
     private static func automaticDelay(kind: AutomaticMediaKind, size: Int64) -> Int64 {
-        let megabytes = Double(size) / 1_048_576.0
         switch kind {
         case .photo:
-            return min(300, 60 + Int64(ceil(megabytes)))
+            return AutomaticScheduleTiming.delay(kind: .photo, size: size)
         case .video:
-            return min(1_800, 60 + Int64(ceil(megabytes * 3.0)))
+            return AutomaticScheduleTiming.delay(kind: .video, size: size)
         case .audio, .file:
-            return min(1_800, 60 + Int64(ceil(megabytes * 2.0)))
+            return AutomaticScheduleTiming.delay(kind: .file, size: size)
         case .other:
-            return 60
+            return AutomaticScheduleTiming.delay(kind: .lightweight)
         }
     }
 
@@ -488,10 +487,9 @@ class TLParser: NSObject {
 
         return automaticScheduleQueue.sync {
             let previous = lastScheduledDateByPeer[peerKey] ?? 0
-            // Telegram's native picker never schedules before the following minute.
-            // Keep the same safety window so network latency cannot turn the request
-            // into an immediate send on the server.
-            let value = max(max(now + 60, origin + delay), previous + 5)
+            // Telegram sends immediately below ten seconds on arrival at the
+            // server; fifteen leaves a small margin, not a network guarantee.
+            let value = max(max(now + AutomaticScheduleTiming.minimumDelay, origin + delay), previous + 5)
             lastScheduledDateByPeer[peerKey] = value
             return Int32(clamping: value)
         }
@@ -591,7 +589,7 @@ class TLParser: NSObject {
             return nil
         }
 
-        let delay = min(180, 60 + Int64(message.count / 200))
+        let delay = AutomaticScheduleTiming.delay(kind: .text, textLength: message.count)
         let date = scheduledDate(peerKey: peerKey, delay: delay)
         guard let result = patchedPayload(data,
                                           flags: flags,

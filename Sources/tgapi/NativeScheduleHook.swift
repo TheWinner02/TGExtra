@@ -18,13 +18,7 @@ private typealias EnqueueMessagesFunction = @convention(thin) (
     [EnqueueMessage]
 ) -> Signal<[MessageId?], NoError>
 
-private enum NativeScheduleMediaKind: Equatable {
-    case text
-    case photo
-    case video
-    case audio
-    case file
-}
+private typealias NativeScheduleMediaKind = AutomaticScheduleTiming.Kind
 
 private struct NativeScheduleAnalysis {
     var kind: NativeScheduleMediaKind = .text
@@ -648,10 +642,11 @@ private func raiseKind(_ candidate: NativeScheduleMediaKind,
     func priority(_ kind: NativeScheduleMediaKind) -> Int {
         switch kind {
         case .text: return 0
-        case .photo: return 1
-        case .audio: return 2
-        case .file: return 3
-        case .video: return 4
+        case .lightweight: return 1
+        case .photo: return 2
+        case .audio: return 3
+        case .file: return 4
+        case .video: return 5
         }
     }
     if priority(candidate) > priority(analysis.kind) {
@@ -668,6 +663,10 @@ private func inspectScheduleValue(_ value: Any,
 
     let loweredLabel = (label ?? "").lowercased()
     let typeName = String(reflecting: type(of: value)).lowercased()
+
+    if typeName.contains("telegrammediacontact") || typeName.contains("telegrammediamap") {
+        raiseKind(.lightweight, analysis: &analysis)
+    }
 
     if typeName.contains("telegrammediaimage") {
         raiseKind(.photo, analysis: &analysis)
@@ -731,18 +730,8 @@ private func automaticNativePlan(
         inspectScheduleValue(message, label: nil, depth: 0, analysis: &analysis)
     }
 
-    let megabytes = Double(analysis.size) / 1_048_576.0
-    let delay: Int64
-    switch analysis.kind {
-    case .text:
-        delay = min(180, 60 + Int64(analysis.textLength / 200))
-    case .photo:
-        delay = min(600, 120 + Int64(ceil(megabytes)))
-    case .video:
-        delay = min(3_600, 120 + Int64(ceil(megabytes * 3.0)))
-    case .audio, .file:
-        delay = min(3_600, 120 + Int64(ceil(megabytes * 2.0)))
-    }
+    let delay = AutomaticScheduleTiming.delay(kind: analysis.kind,
+        textLength: analysis.textLength, size: analysis.size)
     return NativeSchedulePlan(
         delay: delay,
         correlationIds: analysis.correlationIds
