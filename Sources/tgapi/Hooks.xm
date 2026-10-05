@@ -155,6 +155,7 @@ static NSData *TGExtraNeutralizeDeleteUpdates(NSData *data, id transport) {
             handleStoriesReadReceipt(self, effectivePayload);
             break;
         case kGetSponsoredMessages:
+        case kGetSponsoredMessagesCurrent:
             handleGetSponsoredMessages(self, effectivePayload);
             break;
         case kChannelsReadHistory:

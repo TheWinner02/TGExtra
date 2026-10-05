@@ -6,6 +6,8 @@
 #define kMessagesReadHistory 238054714
 #define kStoriesReadStories -1521034552
 #define kGetSponsoredMessages -1680673735
+// Newer layers add flags and an optional msg_id; the empty response is unchanged.
+#define kGetSponsoredMessagesCurrent 0x3d6ce850
 #define kSendScreenshotNotification -1589618665
 #define kMessagesReadMessageContents 917472119
 
