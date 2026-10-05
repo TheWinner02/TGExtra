@@ -239,6 +239,7 @@ class TGExtraDeletedMessageCleaner: NSObject {
     private static var uiAccountKey: UInt8 = 0
     // Full native IDs observed in chat, scoped by database, never by raw ID alone.
     private static var observedIds: [String: [String: MessageId]] = [:]
+    private static var readStatus: [String: String] = [:]
 
     private struct ReflectedId {
         let peer: Int64
@@ -276,13 +277,14 @@ class TGExtraDeletedMessageCleaner: NSObject {
     }
 
     private static func messageIds(in value: Any, depth: Int = 0) -> [MessageId] {
+        if let id = value as? MessageId { return [id] }
         if let id = nativeStoredValue(named: "id", in: value) as? MessageId { return [id] }
-        guard depth < 6 else { return [] }
+        guard depth < 12 else { return [] }
         let mirror = Mirror(reflecting: value)
         return mirror.children.prefix(100).flatMap { child -> [MessageId] in
             let structural = mirror.displayStyle == .enum || mirror.displayStyle == .tuple ||
                 mirror.displayStyle == .collection || mirror.displayStyle == .optional
-            guard structural || ["message", "firstMessage", "content", "messages"].contains(child.label ?? "") else { return [] }
+            guard structural || ["message", "firstMessage", "content", "messages", "_message", "_content", "_impl", "_value", "value", "_id"].contains(child.label ?? "") else { return [] }
             return messageIds(in: child.value, depth: depth + 1)
         }
     }
@@ -313,7 +315,8 @@ class TGExtraDeletedMessageCleaner: NSObject {
         }
         let records = UserDefaults.standard.array(forKey: recordsKey) as? [[String: Any]] ?? []
         let count = records.filter { ($0["account"] as? String) == path }.count
-        return "Account aperto: \(count) messaggi registrati"
+        let observed = (observedIds[path] ?? [:]).count
+        return "Account aperto: \(count) messaggi registrati; \(observed) ID completi letti dalle chat. " + (readStatus[path] ?? "Nessuna cella acquisita.")
     }
 
     @objc(registerNode:)
@@ -327,10 +330,25 @@ class TGExtraDeletedMessageCleaner: NSObject {
             registerRetainedAccount(account)
             if let item,
                let entry = retainedMessageAccounts().first(where: { $0.0 === account }) {
-                for id in messageIds(in: item) {
+                let ids = messageIds(in: item)
+                var readable = 0
+                for id in ids {
                     if let fields = components(id) {
                         observedIds[entry.2, default: [:]][fields.key] = id
+                        readable += 1
                     }
+                }
+                if readable > 0 {
+                    readStatus[entry.2] = "Ultima cella: \(readable) ID acquisiti."
+                } else if let id = ids.first {
+                    // Field names/types only: never include message text or media.
+                    let fields = Mirror(reflecting: id).children.map { "\($0.label ?? "?"):\(type(of: $0.value))" }.joined(separator: ",")
+                    let peer = nativeStoredValue(named: "peerId", in: id)
+                    let peerFields = peer.map { Mirror(reflecting: $0).children.map { "\($0.label ?? "?"):\(type(of: $0.value))" }.joined(separator: ",") } ?? "assente"
+                    readStatus[entry.2] = "ID non leggibile [\(fields)]; peer [\(peerFields)]."
+                } else {
+                    let fields = Mirror(reflecting: item).children.map { $0.label ?? "?" }.joined(separator: ",")
+                    readStatus[entry.2] = "ID non acquisito: \(type(of: item)) [\(fields)]."
                 }
                 enrichRecords(path: entry.2)
             }
@@ -340,11 +358,18 @@ class TGExtraDeletedMessageCleaner: NSObject {
     private static func enrichRecords(path: String) {
         var records = UserDefaults.standard.array(forKey: recordsKey) as? [[String: Any]] ?? []
         var changed = false
-        for index in records.indices where (records[index]["account"] as? String) == path && records[index]["peer"] == nil {
+        for index in records.indices where (records[index]["account"] as? String) == path {
+            // Revalidate metadata saved by earlier builds against the original
+            // account/channel deletion event, not an old derived peer value.
+            var event = records[index]
+            event.removeValue(forKey: "peer")
+            event.removeValue(forKey: "namespace")
             let matches = (observedIds[path] ?? [:]).values.compactMap { components($0) }.filter { id in
-                Self.matches(id, record: records[index])
+                Self.matches(id, record: event)
             }
-            if matches.count == 1, let id = matches.first {
+            if matches.count == 1, let id = matches.first,
+               (records[index]["peer"] as? NSNumber)?.int64Value != id.peer ||
+               (records[index]["namespace"] as? NSNumber)?.int32Value != id.namespace {
                 records[index]["peer"] = NSNumber(value: id.peer)
                 records[index]["namespace"] = NSNumber(value: id.namespace)
                 changed = true
@@ -405,10 +430,12 @@ class TGExtraDeletedMessageCleaner: NSObject {
         clearing = true
         // Capture on the main queue; never access the UI registry on Postbox's queue.
         let observed = Array((observedIds[path] ?? [:]).values)
-        let signal = account.1.transaction(userInteractive: true, ignoreDisabled: false, { transaction -> [String] in
+        let cellStatus = readStatus[path] ?? "Nessuna cella acquisita."
+        let signal = account.1.transaction(userInteractive: true, ignoreDisabled: false, { transaction -> ([String], String) in
             let globalIds = records.filter { ($0["channel"] as? NSNumber)?.int64Value == 0 }
                 .compactMap { ($0["id"] as? NSNumber)?.int32Value }
             var ids = transaction.messageIdsForGlobalIds(globalIds)
+            let globalCount = ids.count
             for record in records {
                 let candidates = observed.filter { id in
                     guard let fields = components(id) else { return false }
@@ -416,6 +443,7 @@ class TGExtraDeletedMessageCleaner: NSObject {
                 }
                 if candidates.count == 1 { ids.append(contentsOf: candidates) }
             }
+            let candidateCount = ids.count
             var seen = Set<String>()
             ids = ids.filter {
                 guard let fields = components($0), records.contains(where: { matches(fields, record: $0) }) else { return false }
@@ -429,10 +457,11 @@ class TGExtraDeletedMessageCleaner: NSObject {
                 return found ? record["token"] as? String : nil
             }
             transaction.deleteMessages(ids, forEachMedia: nil)
-            return tokens
+            return (tokens, "ID chat: \(observed.count); lookup globale: \(globalCount); candidati: \(candidateCount); trovati: \(ids.count). \(cellStatus)")
         }, file: #file, line: #line)
-        cleanupDisposable = signal.start(next: { removedTokens in
+        cleanupDisposable = signal.start(next: { result in
             DispatchQueue.main.async {
+                let removedTokens = result.0
                 let tokens = Set(removedTokens)
                 let current = UserDefaults.standard.array(forKey: recordsKey) as? [[String: Any]] ?? []
                 let remaining = current.filter { !tokens.contains($0["token"] as? String ?? "") }
@@ -445,7 +474,7 @@ class TGExtraDeletedMessageCleaner: NSObject {
                 clearing = false
                 let notFound = records.count - tokens.count
                 let error = notFound > 0
-                    ? "Rimossi \(tokens.count) messaggi. Altri \(notFound) non sono stati trovati nel database dell'account aperto: registro e icone conservati. Apri la chat con i messaggi eliminati e riprova."
+                    ? "Rimossi \(tokens.count) messaggi. Altri \(notFound) non individuati: registro e icone conservati.\n\nDiagnostica: \(result.1)"
                     : nil
                 completion(tokens.count, unresolved, error)
                 cleanupDisposable = nil
