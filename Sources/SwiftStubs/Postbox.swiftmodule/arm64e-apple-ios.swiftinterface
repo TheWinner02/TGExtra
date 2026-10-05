@@ -13,7 +13,9 @@ public struct MessageId {
   public init(peerId: PeerId, namespace: Swift.Int32, id: Swift.Int32)
 }
 public protocol Media : AnyObject {}
+public final class Message {}
 public final class Transaction {
+  public func getMessage(_ id: MessageId) -> Message?
   public func messageIdsForGlobalIds(_ ids: [Swift.Int32]) -> [MessageId]
   public func deleteMessages(_ ids: [MessageId], forEachMedia: ((any Media) -> Swift.Void)?)
 }

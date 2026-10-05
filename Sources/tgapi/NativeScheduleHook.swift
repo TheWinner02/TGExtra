@@ -251,6 +251,7 @@ class TGExtraDeletedMessageCleaner: NSObject {
                 let packed = (bits & 0xffffffff) | (UInt64(2) << 32) | ((bits >> 32) << 35)
                 ids.append(MessageId(peerId: PeerId(Int64(bitPattern: packed)), namespace: 0, id: id))
             }
+            ids = ids.filter { transaction.getMessage($0) != nil }
             transaction.deleteMessages(ids, forEachMedia: nil)
             return ids.count
         }, file: #file, line: #line)
