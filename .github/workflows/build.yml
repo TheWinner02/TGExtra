@@ -34,6 +34,12 @@ jobs:
                 swiftc Sources/tgapi/AutomaticScheduleTiming.swift scripts/test-schedule-timing.swift -o "$RUNNER_TEMP/tgextra-timing-tests"
                 "$RUNNER_TEMP/tgextra-timing-tests"
 
+            - name: Test advertisement detection
+              shell: bash
+              run: |
+                swiftc Sources/tgapi/AdvertisementFilter.swift scripts/test-ad-filter.swift -o "$RUNNER_TEMP/tgextra-ad-tests"
+                "$RUNNER_TEMP/tgextra-ad-tests"
+
             - name: Set up Theos
               uses: waruhachi/theos-action@v2.4.6
               with:

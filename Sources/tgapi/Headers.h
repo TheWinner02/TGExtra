@@ -20,6 +20,10 @@
 + (void)clearForUI:(UIViewController *)ui completion:(void (^)(NSInteger removed, NSInteger unresolved, NSString *error))completion;
 @end
 
+@interface TGExtraAdFilter : NSObject
++ (BOOL)nodeIsAdvertisement:(id)node;
+@end
+
 @interface MTRpcError : NSObject
 - (id)initWithErrorCode:(int)code errorDescription:(id)desc;
 @end

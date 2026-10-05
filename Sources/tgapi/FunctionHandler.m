@@ -180,6 +180,8 @@ void handleGetSponsoredMessages(MTRequest *request, NSData *payload) {
 		
 		uint8_t header[] = {0x0F, 0X49, 0X39, 0X18}; // messages.sponsoredMessagesEmpty#1839490f
 		request.fakeData = [NSData dataWithBytes:header length:sizeof(header)];
+		[[NSUserDefaults standardUserDefaults] setObject:@"Richiesta inserzioni bloccata"
+			forKey:@"TGExtraAdsStatus"];
 	}
 }
 

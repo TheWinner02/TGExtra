@@ -2,10 +2,12 @@
 #import "Headers.h"
 #import "../Headers.h"
 #import "../Logger/Logger.h"
+#import <objc/runtime.h>
 
 #define kMessageDeletedNotification @"TGExtraMessageDeletedRealtime"
 #define kAutomaticScheduleDidEnqueueNotification @"TGExtraAutomaticScheduleDidEnqueue"
 #define kDeletedMessageIconTag 8898
+static char TGExtraHiddenAdViewStateKey;
 
 // Menu Open
 @interface ASDisplayNode : NSObject
@@ -250,21 +252,43 @@ static void TGExtraFinishAutomaticScheduleUI(void) {
 - (void)layout {
     %orig;
 
+    NSString *className = NSStringFromClass([self class]);
+    BOOL isMessageNode = [className containsString:@"ChatMessage"] &&
+        [className containsString:@"ItemNode"];
+    BOOL hideAdvertisement = NO;
     if ([[NSUserDefaults standardUserDefaults] boolForKey:kDisableAllAds]) {
         @try {
-            NSString *className = NSStringFromClass([self class]);
-            if ([className containsString:@"ChatSponsoredMessage"] ||
-                [className containsString:@"ChatChannelAdItemNode"]) {
-                self.view.hidden = YES;
-                self.view.alpha = 0.0;
-                return;
-            }
+            hideAdvertisement = [className containsString:@"ChatSponsoredMessage"] ||
+                [className containsString:@"ChatChannelAdItemNode"] ||
+                [className containsString:@"ChatAdPanelNode"] ||
+                (isMessageNode && [TGExtraAdFilter nodeIsAdvertisement:self]);
         } @catch (NSException *exception) {
             customLog2(@"TGExtra ad UI hook exception: %@", exception);
         }
     }
 
-    NSString *className = NSStringFromClass([self class]);
+    NSDictionary *adState = objc_getAssociatedObject(self.view, &TGExtraHiddenAdViewStateKey);
+    if (hideAdvertisement) {
+        if (!adState) {
+            objc_setAssociatedObject(self.view, &TGExtraHiddenAdViewStateKey,
+                @{@"hidden": @(self.view.hidden), @"alpha": @(self.view.alpha),
+                  @"accessibility": @(self.view.accessibilityElementsHidden)},
+                OBJC_ASSOCIATION_RETAIN_NONATOMIC);
+        }
+        self.view.hidden = YES;
+        self.view.alpha = 0.0;
+        self.view.accessibilityElementsHidden = YES;
+        [[NSUserDefaults standardUserDefaults] setObject:@"Inserzione riconosciuta e nascosta nella chat"
+            forKey:@"TGExtraAdsStatus"];
+        return;
+    } else if (adState) {
+        // Restore only state changed by us when the cell is reused or the switch is off.
+        self.view.hidden = [adState[@"hidden"] boolValue];
+        self.view.alpha = [adState[@"alpha"] doubleValue];
+        self.view.accessibilityElementsHidden = [adState[@"accessibility"] boolValue];
+        objc_setAssociatedObject(self.view, &TGExtraHiddenAdViewStateKey, nil, OBJC_ASSOCIATION_RETAIN_NONATOMIC);
+    }
+
     if ([[NSUserDefaults standardUserDefaults] boolForKey:kHideStories] &&
         ([className containsString:@"StoryPeerList"] ||
          [className containsString:@"StoryContainer"] ||

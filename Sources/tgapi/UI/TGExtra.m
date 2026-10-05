@@ -386,6 +386,10 @@ typedef NS_ENUM(NSInteger, TABLE_VIEW_SECTIONS) {
 		if (indexPath.row == 0) {
 			cell.textLabel.text = TGLoc(@"DISABLE_ALL_ADS_TITLE");
 			cell.detailTextLabel.text = TGLoc(@"DISABLE_ALL_ADS_SUBTITLE");
+			NSString *adStatus = [[NSUserDefaults standardUserDefaults] stringForKey:@"TGExtraAdsStatus"];
+			if (adStatus.length > 0) {
+				cell.detailTextLabel.text = [cell.detailTextLabel.text stringByAppendingFormat:@"\nDiagnostica: %@", adStatus];
+			}
 		}
 		else if (indexPath.row == 1) {
 			cell.textLabel.text = TGLoc(@"ENABLE_SAVING_PROTECTED_CONTENT_TITLE");
