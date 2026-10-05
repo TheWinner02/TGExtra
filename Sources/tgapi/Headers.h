@@ -13,6 +13,7 @@
 @end
 
 @interface TGExtraDeletedMessageCleaner : NSObject
++ (void)registerNode:(id)node;
 + (void)recordIds:(NSArray<NSNumber *> *)ids channelId:(NSNumber *)channelId transport:(id)transport;
 + (void)clearWithCompletion:(void (^)(NSInteger removed, NSInteger unresolved, NSString *error))completion;
 @end

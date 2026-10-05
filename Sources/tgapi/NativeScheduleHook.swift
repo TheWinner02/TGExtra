@@ -180,12 +180,33 @@ private func nativeAllVisibleControllers() -> [UIViewController] {
 
 // Locate the actual account from the visible controller context. The network
 // basePath scopes retained-message records to the account's local database.
+private final class RetainedAccountReference {
+    weak var account: Account?
+    init(_ account: Account) { self.account = account }
+}
+
+private var retainedAccountReferences: [RetainedAccountReference] = []
+
+private func registerRetainedAccount(_ account: Account) {
+    retainedAccountReferences.removeAll { $0.account == nil }
+    if !retainedAccountReferences.contains(where: { $0.account === account }) {
+        retainedAccountReferences.append(RetainedAccountReference(account))
+    }
+}
+
 private func retainedMessageAccounts() -> [(Account, Postbox, String, AnyObject)] {
-    var result: [(Account, Postbox, String, AnyObject)] = []
+    var accounts = retainedAccountReferences.compactMap { $0.account }
     for controller in nativeAllVisibleControllers() {
-        guard let context = nativeStoredValue(named: "context", in: controller),
-              let account = nativeStoredValue(named: "account", in: context) as? Account,
-              let postbox = nativeStoredValue(named: "postbox", in: account) as? Postbox,
+        if let context = nativeStoredValue(named: "context", in: controller),
+           let account = nativeStoredValue(named: "account", in: context) as? Account {
+            registerRetainedAccount(account)
+            accounts.removeAll { $0 === account }
+            accounts.append(account)
+        }
+    }
+    var result: [(Account, Postbox, String, AnyObject)] = []
+    for account in accounts {
+        guard let postbox = nativeStoredValue(named: "postbox", in: account) as? Postbox,
               let network = nativeStoredValue(named: "network", in: account),
               let path = nativeStoredValue(named: "basePath", in: network) as? String,
               let transport = nativeStoredValue(named: "mtProto", in: network) else { continue }
@@ -196,18 +217,47 @@ private func retainedMessageAccounts() -> [(Account, Postbox, String, AnyObject)
     return result
 }
 
+private func retainedTransportContext(_ transport: AnyObject) -> AnyObject? {
+    guard let object = transport as? NSObject,
+          object.responds(to: NSSelectorFromString("context")) else { return nil }
+    return object.value(forKey: "context") as AnyObject?
+}
+
+private func retainedTransportMatches(_ lhs: AnyObject, _ rhs: AnyObject) -> Bool {
+    if lhs === rhs { return true }
+    guard let leftContext = retainedTransportContext(lhs),
+          let rightContext = retainedTransportContext(rhs) else { return false }
+    return leftContext === rightContext
+}
+
 @objc(TGExtraDeletedMessageCleaner)
 class TGExtraDeletedMessageCleaner: NSObject {
     private static let recordsKey = "TGExtraRetainedMessageRecords"
     private static var clearing = false
     private static var cleanupDisposable: Disposable?
 
+    @objc(registerNode:)
+    static func registerNode(_ node: AnyObject) {
+        guard Thread.isMainThread else { return }
+        let item = nativeStoredValue(named: "item", in: node)
+        let context = nativeStoredValue(named: "context", in: node) ??
+            item.flatMap { nativeStoredValue(named: "context", in: $0) }
+        if let context,
+           let account = nativeStoredValue(named: "account", in: context) as? Account {
+            registerRetainedAccount(account)
+        }
+    }
+
     @objc(recordIds:channelId:transport:)
     static func recordIds(_ ids: [NSNumber], channelId: NSNumber, transport: AnyObject) {
         DispatchQueue.main.async {
-            guard let account = retainedMessageAccounts().first(where: { $0.3 === transport }) else {
+            guard let account = retainedMessageAccounts().first(where: {
+                retainedTransportMatches($0.3, transport)
+            }) else {
                 // Older/unknown records remain in the existing cache; do not
                 // guess an account for a destructive operation.
+                UserDefaults.standard.set("Eliminazione intercettata: account della connessione non trovato",
+                    forKey: "TGExtraRetainedMessageStatus")
                 return
             }
             var records = UserDefaults.standard.array(forKey: recordsKey) as? [[String: Any]] ?? []
@@ -221,6 +271,8 @@ class TGExtraDeletedMessageCleaner: NSObject {
                 }) { records.append(record) }
             }
             UserDefaults.standard.set(records, forKey: recordsKey)
+            UserDefaults.standard.set("Eliminazione registrata: \(ids.count) messaggi associati all'account",
+                forKey: "TGExtraRetainedMessageStatus")
         }
     }
 
@@ -236,7 +288,12 @@ class TGExtraDeletedMessageCleaner: NSObject {
         let legacyIds = UserDefaults.standard.array(forKey: "TGExtraDeletedMessageIds") as? [NSNumber] ?? []
         let knownIds = Set(allRecords.compactMap { ($0["id"] as? NSNumber)?.int32Value })
         let unresolved = legacyIds.filter { !knownIds.contains($0.int32Value) }.count
-        guard !records.isEmpty else { completion(0, unresolved, nil); return }
+        guard !records.isEmpty else {
+            let status = UserDefaults.standard.string(forKey: "TGExtraRetainedMessageStatus")
+            let error = status?.contains("non trovato") == true ? status : nil
+            completion(0, unresolved, error)
+            return
+        }
         clearing = true
         let signal = account.1.transaction(userInteractive: true, ignoreDisabled: false, { transaction -> Int in
             let globalIds = records.filter { ($0["channel"] as? NSNumber)?.int64Value == 0 }
@@ -505,6 +562,7 @@ private func nativeEnqueueMessagesHook(_ account: Account,
     guard let original = originalEnqueueMessages else {
         fatalError("TGExtra native scheduler original function is unavailable")
     }
+    DispatchQueue.main.async { registerRetainedAccount(account) }
     let automaticScheduleEnabled = UserDefaults.standard.bool(
         forKey: "TGExtraAutomaticSchedule"
     )

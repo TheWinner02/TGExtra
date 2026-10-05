@@ -368,6 +368,12 @@ typedef NS_ENUM(NSInteger, TABLE_VIEW_SECTIONS) {
 			cell = [self normalCellFromTableView:tableView];
 			cell.textLabel.text = TGLoc(@"CLEAR_RETAINED_MESSAGES_TITLE");
 			cell.detailTextLabel.text = TGLoc(@"CLEAR_RETAINED_MESSAGES_SUBTITLE");
+			NSString *cleanupStatus = [[NSUserDefaults standardUserDefaults]
+				stringForKey:@"TGExtraRetainedMessageStatus"];
+			if (cleanupStatus.length > 0) {
+				cell.detailTextLabel.text = [cell.detailTextLabel.text
+					stringByAppendingFormat:@"\nDiagnostica: %@", cleanupStatus];
+			}
 			cell.imageView.image = [UIImage systemImageNamed:@"trash"];
 			cell.imageView.tintColor = UIColor.systemRedColor;
 			cell.accessoryView = nil;
@@ -800,7 +806,7 @@ typedef NS_ENUM(NSInteger, TABLE_VIEW_SECTIONS) {
         [TGExtraDeletedMessageCleaner clearWithCompletion:^(NSInteger removed, NSInteger unresolved, NSString *error) {
             NSString *message = error ?: [NSString stringWithFormat:TGLoc(@"CLEAR_RETAINED_MESSAGES_RESULT"), (long)removed];
             if (!error && unresolved > 0) {
-                message = [message stringByAppendingFormat:@"\\n\\n%@", TGLoc(@"CLEAR_RETAINED_MESSAGES_LEGACY")];
+                message = [message stringByAppendingFormat:@"\n\n%@", TGLoc(@"CLEAR_RETAINED_MESSAGES_LEGACY")];
             }
             UIAlertController *result = [UIAlertController alertControllerWithTitle:TGLoc(@"CLEAR_RETAINED_MESSAGES_TITLE")
                 message:message preferredStyle:UIAlertControllerStyleAlert];

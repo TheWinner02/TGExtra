@@ -280,6 +280,7 @@ static void TGExtraFinishAutomaticScheduleUI(void) {
     }
 
     TGExtraEnsureActiveMessageNodes();
+    [TGExtraDeletedMessageCleaner registerNode:self];
     @synchronized (TGExtraActiveMessageNodes) {
         [TGExtraActiveMessageNodes addObject:self];
     }
