@@ -180,6 +180,8 @@ void handleGetSponsoredMessages(MTRequest *request, NSData *payload) {
 		
 		uint8_t header[] = {0x0F, 0X49, 0X39, 0X18}; // messages.sponsoredMessagesEmpty#1839490f
 		request.fakeData = [NSData dataWithBytes:header length:sizeof(header)];
+		[[NSUserDefaults standardUserDefaults] setObject:@"Richiesta inserzioni bloccata"
+			forKey:@"TGExtraAdsStatus"];
 	}
 }
 
@@ -187,4 +189,25 @@ void handleChannelsReadReceipt(MTRequest *request, NSData *payload) {
 	if ([[NSUserDefaults standardUserDefaults] boolForKey:kDisableMessageReadReceipt]) {
 		request.fakeData = boolTrue();
 	}
+}
+
+void handleSendScreenshotNotification(MTRequest *request, NSData *payload) {
+	if ([[NSUserDefaults standardUserDefaults] boolForKey:kDisableScreenshotNotification]) {
+		request.fakeData = boolTrue();
+	}
+}
+
+void handleReadMessageContents(MTRequest *request, NSData *payload) {
+	if (![[NSUserDefaults standardUserDefaults] boolForKey:kAntiSelfDestruct]) {
+		return;
+	}
+
+	uint8_t header[] = {0x85, 0x91, 0xD1, 0x84}; // messages.affectedMessages#84d19185
+	int32_t pts = 0;
+	int32_t ptsCount = 0;
+	NSMutableData *data = [NSMutableData data];
+	[data appendBytes:header length:sizeof(header)];
+	[data appendBytes:&pts length:sizeof(pts)];
+	[data appendBytes:&ptsCount length:sizeof(ptsCount)];
+	request.fakeData = data;
 }

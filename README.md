@@ -13,7 +13,11 @@ To Open Tweak menu : Longpress screen with 3 finger (if no flex injected) of 4 f
 - Disable Ads
 - Ghost Mode
 - No Read Receipt for messages and Stories
-- Allow saving Protected Content ( Due to frequenet Telegram Api updates this feature is only limited for client compiled with 11.8.1 sources)
+- Allow saving Protected Content (compatibility depends on the Telegram build)
+- Keep messages visible when they are deleted by the sender
+- Open disappearing media without starting the server-side deletion timer
+- Disable screenshot notifications and protected-screen overlays
+- Confirm before starting audio and video calls
 
 
 ## Disclaimer

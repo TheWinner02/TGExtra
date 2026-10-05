@@ -38,7 +38,14 @@
 
 	NSString *localizedString = [[TGExtraLocalization shared].localization get:key];
 
-	if (!localizedString) return key;
+	if (!localizedString || [localizedString isEqualToString:key]) {
+		NSString *englishPath = [NSString stringWithFormat:@"%@/TGExtra.bundle/en.lproj/Localizable.strings", jbroot(@"/Library/Application Support/TGExtra")];
+		if (![[NSFileManager defaultManager] fileExistsAtPath:englishPath]) {
+			englishPath = [NSString stringWithFormat:@"%@/TGExtra.bundle/en.lproj/Localizable.strings", [[NSBundle mainBundle] resourcePath]];
+		}
+		NSDictionary *english = [NSDictionary dictionaryWithContentsOfFile:englishPath];
+		return english[key] ?: key;
+	}
 
 	return localizedString;
 }

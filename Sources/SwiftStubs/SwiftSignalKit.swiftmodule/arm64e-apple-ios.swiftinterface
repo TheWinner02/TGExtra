@@ -1,0 +1,11 @@
+// swift-interface-format-version: 1.0
+// swift-compiler-version: Apple Swift version 5.10
+// swift-module-flags: -target arm64e-apple-ios14.0 -enable-objc-interop -enable-library-evolution -module-name SwiftSignalKit
+import Swift
+public enum NoError : Swift.Error {}
+public protocol Disposable : AnyObject {
+  func dispose()
+}
+public final class Signal<Value, ErrorType> {
+  public func start(next: ((Value) -> Swift.Void)!, error: ((ErrorType) -> Swift.Void)!, completed: (() -> Swift.Void)!) -> any SwiftSignalKit.Disposable
+}

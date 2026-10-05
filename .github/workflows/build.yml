@@ -1,27 +1,17 @@
 name: Build and Release Tweak
 
 permissions:
-    contents: write
+    contents: read
 
 on:
+    push:
+        branches: [main, dev]
+    workflow_dispatch:
     release:
         types: [published]
 
 jobs:
-    cleanup:
-        runs-on: macos-15
-        steps:
-            - uses: actions/checkout@v7
-
-            - name: Cleaning up existing releases and tags
-              env:
-                GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
-              run: |
-                gh release delete release --yes || true
-                git push origin :refs/tags/release || true
-
     build:
-        needs: cleanup
         runs-on: macos-15
         strategy:
             matrix:
@@ -36,7 +26,25 @@ jobs:
         steps:
             - uses: actions/checkout@v7
               with:
-                ref: ${{ github.event.repository.default_branch }}
+                ref: ${{ github.event_name == 'release' && github.event.release.target_commitish || github.ref }}
+
+            - name: Test scheduling delays
+              shell: bash
+              run: |
+                swiftc Sources/tgapi/AutomaticScheduleTiming.swift scripts/test-schedule-timing.swift -o "$RUNNER_TEMP/tgextra-timing-tests"
+                "$RUNNER_TEMP/tgextra-timing-tests"
+
+            - name: Test advertisement detection
+              shell: bash
+              run: |
+                swiftc Sources/tgapi/AdvertisementFilter.swift scripts/test-ad-filter.swift -o "$RUNNER_TEMP/tgextra-ad-tests"
+                "$RUNNER_TEMP/tgextra-ad-tests"
+
+            - name: Test story decoration detection
+              shell: bash
+              run: |
+                swiftc Sources/tgapi/StoryVisibility.swift scripts/test-story-visibility.swift -o "$RUNNER_TEMP/tgextra-story-tests"
+                "$RUNNER_TEMP/tgextra-story-tests"
 
             - name: Set up Theos
               uses: waruhachi/theos-action@v2.4.6
@@ -58,12 +66,22 @@ jobs:
                 path: packages/*.deb
 
     release:
+        if: github.event_name == 'release' && github.event.release.target_commitish == github.event.repository.default_branch
         needs: build
         runs-on: macos-15
+        permissions:
+            contents: write
         steps:
             - uses: actions/checkout@v7
               with:
-                ref: ${{ github.event.repository.default_branch }}
+                ref: ${{ github.event.release.target_commitish }}
+
+            - name: Clean up existing rolling release
+              env:
+                GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+              run: |
+                gh release delete release --yes || true
+                git push origin :refs/tags/release || true
 
             - name: Download all DEBs
               uses: actions/download-artifact@v8

@@ -1,0 +1,24 @@
+// swift-interface-format-version: 1.0
+// swift-compiler-version: Apple Swift version 5.10
+// swift-module-flags: -target arm64-apple-ios14.0 -enable-objc-interop -enable-library-evolution -module-name Postbox
+import Swift
+import SwiftSignalKit
+public protocol MessageAttribute : AnyObject {}
+@frozen public struct PeerId {
+  public let namespace: Swift.UInt32
+  public let id: Swift.Int64
+  public init(_ value: Swift.Int64)
+}
+public struct MessageId {
+  public init(peerId: PeerId, namespace: Swift.Int32, id: Swift.Int32)
+}
+public protocol Media : AnyObject {}
+public final class Message {}
+public final class Transaction {
+  public func messageIdsForGlobalIds(_ ids: [Swift.Int32]) -> [MessageId]
+  public func deleteMessages(_ ids: [MessageId], forEachMedia: ((any Media) -> Swift.Void)?)
+}
+public final class Postbox {
+  public func messagesAtIds(_ ids: [MessageId]) -> SwiftSignalKit.Signal<[Message], SwiftSignalKit.NoError>
+  public func transaction<T>(userInteractive: Swift.Bool, ignoreDisabled: Swift.Bool, _ f: @escaping (Transaction) -> T, file: Swift.String, line: Swift.Int) -> SwiftSignalKit.Signal<T, SwiftSignalKit.NoError>
+}

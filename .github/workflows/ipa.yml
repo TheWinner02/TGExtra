@@ -7,6 +7,11 @@ on:
         description: "Direct URL of the decrypted IPA"
         required: true
         type: string
+      publish_release:
+        description: "Publish the resulting IPA to the rolling release (default branch only)"
+        required: false
+        default: false
+        type: boolean
 
 jobs:
   prepareDependencies:
@@ -20,6 +25,21 @@ jobs:
     steps:
       - name: Fetch TGExtra.bundle
         uses: actions/checkout@v7
+
+      - name: Set up Theos
+        uses: waruhachi/theos-action@v2.4.6
+        with:
+          theos-src: 'waruhachi/theos'
+          theos-branch: 'main'
+          sdks-src: 'waruhachi/sdks'
+          sdks-branch: 'main'
+
+      - name: Build TGExtra from selected branch
+        shell: bash
+        run: |
+          set -e
+          make clean package FINALPACKAGE=1 STRIP=0
+          cp packages/com.choco.tg_*_iphoneos-arm.deb .
 
       - name: Download decrypted IPA
         env:
@@ -40,12 +60,6 @@ jobs:
           echo "ipa_app_name=$IPA_APP_NAME" >> "$GITHUB_OUTPUT"
           echo "ipa_bundle_id=$IPA_BUNDLE_ID" >> "$GITHUB_OUTPUT"
           echo "ipa_version=$IPA_VERSION" >> "$GITHUB_OUTPUT"
-
-      - name: Download latest TGExtra
-        env:
-          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
-        run: |
-          gh release download --repo TheWinner02/TGExtra --pattern 'com.choco.tg_*_iphoneos-arm.deb' --dir .
 
       - name: Extract TGExtra version
         id: extractTGExtra
@@ -223,6 +237,7 @@ jobs:
 
   updateRelease:
     name: Update GitHub Release
+    if: inputs.publish_release && github.ref_name == github.event.repository.default_branch
     needs: [prepareDependencies, inject, patch]
     runs-on: macos-15
     permissions:
@@ -294,13 +309,15 @@ jobs:
 
   cleanup:
     name: Cleanup
-    needs: updateRelease
+    if: always() && inputs.publish_release && github.ref_name == github.event.repository.default_branch
+    needs: [prepareDependencies, inject, patch, updateRelease]
     runs-on: macos-15
     steps:
       - name: Delete build artifacts
         uses: geekyeggo/delete-artifact@v6
         with:
           name: |
-            artifacts
+            injected-artifacts
+            patched-artifacts
             dependencies
           failOnError: false

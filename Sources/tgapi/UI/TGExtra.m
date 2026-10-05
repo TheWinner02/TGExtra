@@ -2,6 +2,7 @@
 #import <Foundation/Foundation.h>
 #import "Icons.h"
 #import "Headers.h"
+#import "../Headers.h"
 
 #define TGLoc(key) [TGExtraLocalization localizedStringForKey:(key)]
 
@@ -186,7 +187,7 @@ typedef NS_ENUM(NSInteger, TABLE_VIEW_SECTIONS) {
 		case READ_RECEIPT:
 		   return 2;
 		case MISC:
-		   return 2;
+		   return 10;
 		case FILE_FIXER:
 		   return 2;
 		case FAKE_LOCATION:
@@ -363,6 +364,17 @@ typedef NS_ENUM(NSInteger, TABLE_VIEW_SECTIONS) {
 		return cell;
 	}
 	else if (indexPath.section == 2) { // MISC
+		if (indexPath.row == 3) {
+			cell = [self normalCellFromTableView:tableView];
+			cell.textLabel.text = TGLoc(@"CLEAR_RETAINED_MESSAGES_TITLE");
+			cell.detailTextLabel.text = TGLoc(@"CLEAR_RETAINED_MESSAGES_SUBTITLE");
+			cell.imageView.image = [UIImage systemImageNamed:@"trash"];
+			cell.imageView.tintColor = UIColor.systemRedColor;
+			cell.accessoryView = nil;
+			cell.textLabel.numberOfLines = 0;
+			cell.detailTextLabel.numberOfLines = 0;
+			return cell;
+		}
 		cell = [self switchCellFromTableView:tableView];
 		cell.imageView.image = nil;
 
@@ -373,6 +385,34 @@ typedef NS_ENUM(NSInteger, TABLE_VIEW_SECTIONS) {
 		else if (indexPath.row == 1) {
 			cell.textLabel.text = TGLoc(@"ENABLE_SAVING_PROTECTED_CONTENT_TITLE");
 			cell.detailTextLabel.text = TGLoc(@"ENABLE_SAVING_PROTECTED_CONTENT_SUBTITLE");
+		}
+		else if (indexPath.row == 2) {
+			cell.textLabel.text = TGLoc(@"ANTI_REVOKE_TITLE");
+			cell.detailTextLabel.text = TGLoc(@"ANTI_REVOKE_SUBTITLE");
+		}
+		else if (indexPath.row == 4) {
+			cell.textLabel.text = TGLoc(@"ANTI_SELF_DESTRUCT_TITLE");
+			cell.detailTextLabel.text = TGLoc(@"ANTI_SELF_DESTRUCT_SUBTITLE");
+		}
+		else if (indexPath.row == 5) {
+			cell.textLabel.text = TGLoc(@"ANTI_SCREENSHOT_TITLE");
+			cell.detailTextLabel.text = TGLoc(@"ANTI_SCREENSHOT_SUBTITLE");
+		}
+		else if (indexPath.row == 6) {
+			cell.textLabel.text = TGLoc(@"CONFIRM_CALLS_TITLE");
+			cell.detailTextLabel.text = TGLoc(@"CONFIRM_CALLS_SUBTITLE");
+		}
+		else if (indexPath.row == 7) {
+			cell.textLabel.text = TGLoc(@"HIDE_STORIES_TITLE");
+			cell.detailTextLabel.text = TGLoc(@"HIDE_STORIES_SUBTITLE");
+		}
+		else if (indexPath.row == 8) {
+			cell.textLabel.text = TGLoc(@"AUTOMATIC_SCHEDULE_TITLE");
+			cell.detailTextLabel.text = TGLoc(@"AUTOMATIC_SCHEDULE_SUBTITLE");
+		}
+		else if (indexPath.row == 9) {
+			cell.textLabel.text = TGLoc(@"DEFAULT_SILENT_MESSAGES_TITLE");
+			cell.detailTextLabel.text = TGLoc(@"DEFAULT_SILENT_MESSAGES_SUBTITLE");
 		}
 
 		UISwitch *toggle = (UISwitch *)cell.accessoryView;
@@ -556,6 +596,10 @@ typedef NS_ENUM(NSInteger, TABLE_VIEW_SECTIONS) {
 
 - (void)tableView:(UITableView *)tableView didSelectRowAtIndexPath:(NSIndexPath *)indexPath {
     [tableView deselectRowAtIndexPath:indexPath animated:YES];
+	if (indexPath.section == MISC && indexPath.row == 3) {
+		[self clearRetainedMessages];
+		return;
+	}
 
 	if (indexPath.section == FILE_FIXER) { // File Picker Fix
 		if (indexPath.row == 1) {
@@ -612,6 +656,9 @@ typedef NS_ENUM(NSInteger, TABLE_VIEW_SECTIONS) {
 
     if (switchKey) {
         [[NSUserDefaults standardUserDefaults] setBool:sender.isOn forKey:switchKey];
+        if ([switchKey isEqualToString:kHideStories]) {
+            TGExtraRefreshStoryVisibility();
+        }
     }
 }
 
@@ -648,6 +695,13 @@ typedef NS_ENUM(NSInteger, TABLE_VIEW_SECTIONS) {
             switch (indexPath.row) {
                 case 0: return kDisableAllAds;
                 case 1: return kDisableForwardRestriction;
+                case 2: return kAntiRevoke;
+                case 4: return kAntiSelfDestruct;
+                case 5: return kDisableScreenshotNotification;
+                case 6: return kConfirmCalls;
+                case 7: return kHideStories;
+                case 8: return kAutomaticSchedule;
+                case 9: return kDefaultSilentMessages;
                 default: return nil;
             }
         case 3:
@@ -718,6 +772,26 @@ typedef NS_ENUM(NSInteger, TABLE_VIEW_SECTIONS) {
 	LocationSelector *ui = [LocationSelector new];
 	UINavigationController *navVC = [[UINavigationController alloc] initWithRootViewController:ui];
 	[self presentViewController:navVC animated:YES completion:nil];
+}
+
+- (void)clearRetainedMessages {
+    UIAlertController *alert = [UIAlertController alertControllerWithTitle:TGLoc(@"CLEAR_RETAINED_MESSAGES_TITLE")
+        message:TGLoc(@"CLEAR_RETAINED_MESSAGES_CONFIRM") preferredStyle:UIAlertControllerStyleAlert];
+    [alert addAction:[UIAlertAction actionWithTitle:TGLoc(@"CANCEL") style:UIAlertActionStyleCancel handler:nil]];
+    [alert addAction:[UIAlertAction actionWithTitle:TGLoc(@"CLEAR_RETAINED_MESSAGES_TITLE")
+        style:UIAlertActionStyleDestructive handler:^(__unused UIAlertAction *action) {
+        [TGExtraDeletedMessageCleaner clearForUI:self completion:^(NSInteger removed, NSInteger unresolved, NSString *error) {
+            NSString *message = error ?: [NSString stringWithFormat:TGLoc(@"CLEAR_RETAINED_MESSAGES_RESULT"), (long)removed];
+            if (!error && unresolved > 0) {
+                message = [message stringByAppendingFormat:@"\n\n%@", TGLoc(@"CLEAR_RETAINED_MESSAGES_LEGACY")];
+            }
+            UIAlertController *result = [UIAlertController alertControllerWithTitle:TGLoc(@"CLEAR_RETAINED_MESSAGES_TITLE")
+                message:message preferredStyle:UIAlertControllerStyleAlert];
+            [result addAction:[UIAlertAction actionWithTitle:TGLoc(@"OK") style:UIAlertActionStyleDefault handler:nil]];
+            [self presentViewController:result animated:YES completion:nil];
+        }];
+    }]];
+    [self presentViewController:alert animated:YES completion:nil];
 }
 
 - (void)clearFilePickerFixCache {

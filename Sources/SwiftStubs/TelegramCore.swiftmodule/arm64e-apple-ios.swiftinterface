@@ -1,0 +1,23 @@
+// swift-interface-format-version: 1.0
+// swift-compiler-version: Apple Swift version 5.10
+// swift-module-flags: -target arm64e-apple-ios14.0 -enable-objc-interop -enable-library-evolution -module-name TelegramCore
+import Swift
+import Postbox
+public class Account {}
+public enum EnqueueMessage {
+  case _tgExtraPlaceholder
+  public var attributes: Swift.Array<any MessageAttribute> { get }
+  public func withUpdatedAttributes(_ f: (Swift.Array<any MessageAttribute>) -> Swift.Array<any MessageAttribute>) -> TelegramCore.EnqueueMessage
+}
+public class OutgoingScheduleInfoMessageAttribute : MessageAttribute {
+  public init(scheduleTime: Swift.Int32, repeatPeriod: Swift.Int32?)
+}
+public struct NotificationInfoMessageAttributeFlags : Swift.OptionSet {
+  public var rawValue: Swift.Int32
+  public init(rawValue: Swift.Int32)
+  public static let muted: TelegramCore.NotificationInfoMessageAttributeFlags
+}
+public class NotificationInfoMessageAttribute : MessageAttribute {
+  public let flags: TelegramCore.NotificationInfoMessageAttributeFlags
+  public init(flags: TelegramCore.NotificationInfoMessageAttributeFlags)
+}
