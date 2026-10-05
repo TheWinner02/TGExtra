@@ -85,6 +85,7 @@ void showUI() {
 	UIWindow *window = UIApplication.sharedApplication.keyWindow;
 	UIViewController *rootVC = window.rootViewController;
 	if (rootVC) {
+		[TGExtraDeletedMessageCleaner bindUI:ui presenter:rootVC];
 	    [rootVC presentViewController:navVC animated:YES completion:nil];
 	}
 }

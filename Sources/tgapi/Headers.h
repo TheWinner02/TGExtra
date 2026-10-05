@@ -14,8 +14,10 @@
 
 @interface TGExtraDeletedMessageCleaner : NSObject
 + (void)registerNode:(id)node;
++ (void)bindUI:(UIViewController *)ui presenter:(UIViewController *)presenter;
++ (NSString *)statusForUI:(UIViewController *)ui;
 + (void)recordIds:(NSArray<NSNumber *> *)ids channelId:(NSNumber *)channelId transport:(id)transport;
-+ (void)clearWithCompletion:(void (^)(NSInteger removed, NSInteger unresolved, NSString *error))completion;
++ (void)clearForUI:(UIViewController *)ui completion:(void (^)(NSInteger removed, NSInteger unresolved, NSString *error))completion;
 @end
 
 @interface MTRpcError : NSObject

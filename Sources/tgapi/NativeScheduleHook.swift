@@ -1,6 +1,7 @@
 import Foundation
 import Darwin
 import UIKit
+import ObjectiveC
 import Postbox
 import SwiftSignalKit
 import TelegramCore
@@ -235,6 +236,54 @@ class TGExtraDeletedMessageCleaner: NSObject {
     private static let recordsKey = "TGExtraRetainedMessageRecords"
     private static var clearing = false
     private static var cleanupDisposable: Disposable?
+    private static var uiAccountKey: UInt8 = 0
+    // Full native IDs observed in chat, scoped by database, never by raw ID alone.
+    private static var observedIds: [String: [String: MessageId]] = [:]
+
+    private static func key(_ id: MessageId) -> String {
+        return "\(id.peerId.toInt64()):\(id.namespace):\(id.id)"
+    }
+
+    private static func messageIds(in value: Any, depth: Int = 0) -> [MessageId] {
+        if let id = nativeStoredValue(named: "id", in: value) as? MessageId { return [id] }
+        guard depth < 6 else { return [] }
+        let mirror = Mirror(reflecting: value)
+        return mirror.children.prefix(100).flatMap { child -> [MessageId] in
+            let structural = mirror.displayStyle == .enum || mirror.displayStyle == .tuple ||
+                mirror.displayStyle == .collection || mirror.displayStyle == .optional
+            guard structural || ["message", "firstMessage", "content", "messages"].contains(child.label ?? "") else { return [] }
+            return messageIds(in: child.value, depth: depth + 1)
+        }
+    }
+
+    @objc(bindUI:presenter:)
+    static func bindUI(_ ui: UIViewController, presenter: UIViewController) {
+        precondition(Thread.isMainThread)
+        guard let window = presenter.view.window else { return }
+        // Only controllers whose views are currently on screen, not cached
+        // accounts or old navigation stacks from a different login.
+        let controllers = nativeControllersInViewHierarchy(of: window)
+        for controller in controllers.reversed() where !controller.view.isHidden {
+            if let context = nativeStoredValue(named: "context", in: controller),
+               let account = nativeStoredValue(named: "account", in: context) as? Account {
+                registerRetainedAccount(account)
+                if let entry = retainedMessageAccounts().first(where: { $0.0 === account }) {
+                    objc_setAssociatedObject(ui, &uiAccountKey, entry.2, .OBJC_ASSOCIATION_COPY_NONATOMIC)
+                    return
+                }
+            }
+        }
+    }
+
+    @objc(statusForUI:)
+    static func statusForUI(_ ui: UIViewController) -> String {
+        guard let path = objc_getAssociatedObject(ui, &uiAccountKey) as? String else {
+            return "Account aperto non identificato: apri una chat e riapri TGExtra."
+        }
+        let records = UserDefaults.standard.array(forKey: recordsKey) as? [[String: Any]] ?? []
+        let count = records.filter { ($0["account"] as? String) == path }.count
+        return "Account aperto: \(count) messaggi registrati"
+    }
 
     @objc(registerNode:)
     static func registerNode(_ node: AnyObject) {
@@ -245,7 +294,36 @@ class TGExtraDeletedMessageCleaner: NSObject {
         if let context,
            let account = nativeStoredValue(named: "account", in: context) as? Account {
             registerRetainedAccount(account)
+            if let item,
+               let entry = retainedMessageAccounts().first(where: { $0.0 === account }) {
+                for id in messageIds(in: item) {
+                    observedIds[entry.2, default: [:]][key(id)] = id
+                }
+                enrichRecords(path: entry.2)
+            }
         }
+    }
+
+    private static func enrichRecords(path: String) {
+        var records = UserDefaults.standard.array(forKey: recordsKey) as? [[String: Any]] ?? []
+        var changed = false
+        for index in records.indices where (records[index]["account"] as? String) == path && records[index]["peer"] == nil {
+            guard let raw = (records[index]["id"] as? NSNumber)?.int32Value,
+                  let channel = (records[index]["channel"] as? NSNumber)?.int64Value else { continue }
+            let matches = (observedIds[path] ?? [:]).values.filter { id in
+                guard id.id == raw, id.namespace == 0 else { return false }
+                let packed = UInt64(bitPattern: id.peerId.toInt64())
+                let namespace = (packed >> 32) & 7
+                let peer = (packed & 0xffffffff) | ((packed >> 35) << 32)
+                return channel == 0 ? namespace == 0 || namespace == 1 : namespace == 2 && peer == UInt64(channel)
+            }
+            if matches.count == 1, let id = matches.first {
+                records[index]["peer"] = NSNumber(value: id.peerId.toInt64())
+                records[index]["namespace"] = NSNumber(value: id.namespace)
+                changed = true
+            }
+        }
+        if changed { UserDefaults.standard.set(records, forKey: recordsKey) }
     }
 
     @objc(recordIds:channelId:transport:)
@@ -271,18 +349,21 @@ class TGExtraDeletedMessageCleaner: NSObject {
                 }) { records.append(record) }
             }
             UserDefaults.standard.set(records, forKey: recordsKey)
+            enrichRecords(path: account.2)
             UserDefaults.standard.set("Eliminazione registrata: \(ids.count) messaggi associati all'account",
                 forKey: "TGExtraRetainedMessageStatus")
         }
     }
 
-    @objc(clearWithCompletion:)
-    static func clear(completion: @escaping (Int, Int, String?) -> Void) {
+    @objc(clearForUI:completion:)
+    static func clear(_ ui: UIViewController, completion: @escaping (Int, Int, String?) -> Void) {
         precondition(Thread.isMainThread)
         guard !clearing else { completion(0, 0, "Pulizia già in corso."); return }
-        guard let account = retainedMessageAccounts().last else {
+        guard let path = objc_getAssociatedObject(ui, &uiAccountKey) as? String,
+              let account = retainedMessageAccounts().first(where: { $0.2 == path }) else {
             completion(0, 0, "Apri una chat dell'account da pulire e riprova."); return
         }
+        enrichRecords(path: path)
         let allRecords = UserDefaults.standard.array(forKey: recordsKey) as? [[String: Any]] ?? []
         let records = allRecords.filter { ($0["account"] as? String) == account.2 }
         let legacyIds = UserDefaults.standard.array(forKey: "TGExtraDeletedMessageIds") as? [NSNumber] ?? []
@@ -295,11 +376,17 @@ class TGExtraDeletedMessageCleaner: NSObject {
             return
         }
         clearing = true
-        let signal = account.1.transaction(userInteractive: true, ignoreDisabled: false, { transaction -> Int in
+        let signal = account.1.transaction(userInteractive: true, ignoreDisabled: false, { transaction -> [String] in
             let globalIds = records.filter { ($0["channel"] as? NSNumber)?.int64Value == 0 }
                 .compactMap { ($0["id"] as? NSNumber)?.int32Value }
             var ids = transaction.messageIdsForGlobalIds(globalIds)
             for record in records {
+                if let peer = (record["peer"] as? NSNumber)?.int64Value,
+                   let namespace = (record["namespace"] as? NSNumber)?.int32Value,
+                   let id = (record["id"] as? NSNumber)?.int32Value {
+                    ids.append(MessageId(peerId: PeerId(peer), namespace: namespace, id: id))
+                    continue
+                }
                 guard let channel = (record["channel"] as? NSNumber)?.int64Value, channel > 0,
                       let id = (record["id"] as? NSNumber)?.int32Value else { continue }
                 // PeerId's public packed representation: namespace 2 (cloud
@@ -309,21 +396,43 @@ class TGExtraDeletedMessageCleaner: NSObject {
                 ids.append(MessageId(peerId: PeerId(Int64(bitPattern: packed)), namespace: 0, id: id))
             }
             ids = ids.filter { transaction.getMessage($0) != nil }
+            var seen = Set<String>()
+            ids = ids.filter { seen.insert(key($0)).inserted }
+            let tokens = records.compactMap { record -> String? in
+                guard let raw = (record["id"] as? NSNumber)?.int32Value else { return nil }
+                let found = ids.contains { id in
+                    guard id.id == raw else { return false }
+                    if let peer = (record["peer"] as? NSNumber)?.int64Value {
+                        return id.peerId.toInt64() == peer && id.namespace == (record["namespace"] as? NSNumber)?.int32Value
+                    }
+                    let packed = UInt64(bitPattern: id.peerId.toInt64())
+                    let namespace = (packed >> 32) & 7
+                    let channel = (record["channel"] as? NSNumber)?.int64Value ?? 0
+                    let peer = (packed & 0xffffffff) | ((packed >> 35) << 32)
+                    return channel == 0 ? namespace < 2 : namespace == 2 && peer == UInt64(channel)
+                }
+                return found ? record["token"] as? String : nil
+            }
             transaction.deleteMessages(ids, forEachMedia: nil)
-            return ids.count
+            return tokens
         }, file: #file, line: #line)
-        cleanupDisposable = signal.start(next: { count in
+        cleanupDisposable = signal.start(next: { removedTokens in
             DispatchQueue.main.async {
-                let tokens = Set(records.compactMap { $0["token"] as? String })
+                let tokens = Set(removedTokens)
                 let current = UserDefaults.standard.array(forKey: recordsKey) as? [[String: Any]] ?? []
                 let remaining = current.filter { !tokens.contains($0["token"] as? String ?? "") }
                 UserDefaults.standard.set(remaining, forKey: recordsKey)
                 let retainedIds = Set(remaining.compactMap { ($0["id"] as? NSNumber)?.int32Value })
-                let clearedIds = records.compactMap { ($0["id"] as? NSNumber)?.int32Value }
+                let clearedIds = records.filter { tokens.contains($0["token"] as? String ?? "") }
+                    .compactMap { ($0["id"] as? NSNumber)?.int32Value }
                     .filter { !retainedIds.contains($0) }
                 TLParser.forgetDeletedMessageIds(clearedIds.map { NSNumber(value: $0) })
                 clearing = false
-                completion(count, unresolved, nil)
+                let notFound = records.count - tokens.count
+                let error = notFound > 0
+                    ? "Rimossi \(tokens.count) messaggi. Altri \(notFound) non sono stati trovati nel database dell'account aperto: registro e icone conservati. Apri la chat con i messaggi eliminati e riprova."
+                    : nil
+                completion(tokens.count, unresolved, error)
                 cleanupDisposable = nil
             }
         }, error: nil, completed: nil)

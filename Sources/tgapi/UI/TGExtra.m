@@ -368,8 +368,7 @@ typedef NS_ENUM(NSInteger, TABLE_VIEW_SECTIONS) {
 			cell = [self normalCellFromTableView:tableView];
 			cell.textLabel.text = TGLoc(@"CLEAR_RETAINED_MESSAGES_TITLE");
 			cell.detailTextLabel.text = TGLoc(@"CLEAR_RETAINED_MESSAGES_SUBTITLE");
-			NSString *cleanupStatus = [[NSUserDefaults standardUserDefaults]
-				stringForKey:@"TGExtraRetainedMessageStatus"];
+			NSString *cleanupStatus = [TGExtraDeletedMessageCleaner statusForUI:self];
 			if (cleanupStatus.length > 0) {
 				cell.detailTextLabel.text = [cell.detailTextLabel.text
 					stringByAppendingFormat:@"\nDiagnostica: %@", cleanupStatus];
@@ -803,7 +802,7 @@ typedef NS_ENUM(NSInteger, TABLE_VIEW_SECTIONS) {
     [alert addAction:[UIAlertAction actionWithTitle:TGLoc(@"CANCEL") style:UIAlertActionStyleCancel handler:nil]];
     [alert addAction:[UIAlertAction actionWithTitle:TGLoc(@"CLEAR_RETAINED_MESSAGES_TITLE")
         style:UIAlertActionStyleDestructive handler:^(__unused UIAlertAction *action) {
-        [TGExtraDeletedMessageCleaner clearWithCompletion:^(NSInteger removed, NSInteger unresolved, NSString *error) {
+        [TGExtraDeletedMessageCleaner clearForUI:self completion:^(NSInteger removed, NSInteger unresolved, NSString *error) {
             NSString *message = error ?: [NSString stringWithFormat:TGLoc(@"CLEAR_RETAINED_MESSAGES_RESULT"), (long)removed];
             if (!error && unresolved > 0) {
                 message = [message stringByAppendingFormat:@"\n\n%@", TGLoc(@"CLEAR_RETAINED_MESSAGES_LEGACY")];
