@@ -431,7 +431,7 @@ class TGExtraDeletedMessageCleaner: NSObject {
         // Capture on the main queue; never access the UI registry on Postbox's queue.
         let observed = Array((observedIds[path] ?? [:]).values)
         let cellStatus = readStatus[path] ?? "Nessuna cella acquisita."
-        let signal = account.1.transaction(userInteractive: true, ignoreDisabled: false, { transaction -> ([String], String) in
+        let signal = account.1.transaction(userInteractive: true, ignoreDisabled: false, { transaction -> ([MessageId], String) in
             let globalIds = records.filter { ($0["channel"] as? NSNumber)?.int64Value == 0 }
                 .compactMap { ($0["id"] as? NSNumber)?.int32Value }
             var ids = transaction.messageIdsForGlobalIds(globalIds)
@@ -447,21 +447,12 @@ class TGExtraDeletedMessageCleaner: NSObject {
             var seen = Set<String>()
             ids = ids.filter {
                 guard let fields = components($0), records.contains(where: { matches(fields, record: $0) }) else { return false }
-                return seen.insert(fields.key).inserted && transaction.getMessage($0) != nil
+                return seen.insert(fields.key).inserted
             }
-            let tokens = records.compactMap { record -> String? in
-                let found = ids.contains { id in
-                    guard let fields = components(id) else { return false }
-                    return matches(fields, record: record)
-                }
-                return found ? record["token"] as? String : nil
-            }
-            transaction.deleteMessages(ids, forEachMedia: nil)
-            return (tokens, "ID chat: \(observed.count); lookup globale: \(globalCount); candidati: \(candidateCount); trovati: \(ids.count). \(cellStatus)")
+            return (ids, "ID chat: \(observed.count); lookup globale: \(globalCount); candidati: \(candidateCount); ID validati: \(ids.count). \(cellStatus)")
         }, file: #file, line: #line)
-        cleanupDisposable = signal.start(next: { result in
-            DispatchQueue.main.async {
-                let removedTokens = result.0
+        func finish(removedTokens: [String], diagnostic: String) {
+                precondition(Thread.isMainThread)
                 let tokens = Set(removedTokens)
                 let current = UserDefaults.standard.array(forKey: recordsKey) as? [[String: Any]] ?? []
                 let remaining = current.filter { !tokens.contains($0["token"] as? String ?? "") }
@@ -474,10 +465,59 @@ class TGExtraDeletedMessageCleaner: NSObject {
                 clearing = false
                 let notFound = records.count - tokens.count
                 let error = notFound > 0
-                    ? "Rimossi \(tokens.count) messaggi. Altri \(notFound) non individuati: registro e icone conservati.\n\nDiagnostica: \(result.1)"
+                    ? "Rimossi \(tokens.count) messaggi. Altri \(notFound) non individuati: registro e icone conservati.\n\nDiagnostica: \(diagnostic)"
                     : nil
                 completion(tokens.count, unresolved, error)
                 cleanupDisposable = nil
+        }
+        cleanupDisposable = signal.start(next: { result in
+            DispatchQueue.main.async {
+                let candidates = result.0
+                guard !candidates.isEmpty else {
+                    finish(removedTokens: [], diagnostic: result.1)
+                    return
+                }
+                // Batch array API: native Postbox performs the per-MessageId
+                // lookup internally, avoiding the layout-only stub's scalar ABI.
+                cleanupDisposable = account.1.messagesAtIds(candidates).start(next: { messages in
+                    DispatchQueue.main.async {
+                        let existing = messages.flatMap { messageIds(in: $0) }.filter { id in
+                            guard let fields = components(id) else { return false }
+                            return records.contains { matches(fields, record: $0) }
+                        }
+                        let diagnostic = result.1 + " Trovati via batch: \(existing.count)."
+                        guard !existing.isEmpty else {
+                            finish(removedTokens: [], diagnostic: diagnostic)
+                            return
+                        }
+                        let deletion = account.1.transaction(userInteractive: true, ignoreDisabled: false, { transaction -> Bool in
+                            transaction.deleteMessages(existing, forEachMedia: nil)
+                            return true
+                        }, file: #file, line: #line)
+                        cleanupDisposable = deletion.start(next: { _ in
+                            DispatchQueue.main.async {
+                                // Clear cache markers only after an independent
+                                // DB read confirms that the messages are gone.
+                                cleanupDisposable = account.1.messagesAtIds(existing).start(next: { remainingMessages in
+                                    DispatchQueue.main.async {
+                                        let remainingFields = remainingMessages.flatMap { messageIds(in: $0) }.compactMap { components($0) }
+                                        guard remainingFields.count == remainingMessages.count else {
+                                            finish(removedTokens: [], diagnostic: diagnostic + " Verifica finale non leggibile: contrassegni conservati.")
+                                            return
+                                        }
+                                        let removed = existing.compactMap { components($0) }.filter { fields in
+                                            !remainingFields.contains { $0.key == fields.key }
+                                        }
+                                        let tokens = records.compactMap { record -> String? in
+                                            removed.contains { matches($0, record: record) } ? record["token"] as? String : nil
+                                        }
+                                        finish(removedTokens: tokens, diagnostic: diagnostic + " Rimasti dopo pulizia: \(remainingMessages.count).")
+                                    }
+                                }, error: nil, completed: nil)
+                            }
+                        }, error: nil, completed: nil)
+                    }
+                }, error: nil, completed: nil)
             }
         }, error: nil, completed: nil)
     }

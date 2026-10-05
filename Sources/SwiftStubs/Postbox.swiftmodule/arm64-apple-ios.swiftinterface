@@ -15,10 +15,10 @@ public struct MessageId {
 public protocol Media : AnyObject {}
 public final class Message {}
 public final class Transaction {
-  public func getMessage(_ id: MessageId) -> Message?
   public func messageIdsForGlobalIds(_ ids: [Swift.Int32]) -> [MessageId]
   public func deleteMessages(_ ids: [MessageId], forEachMedia: ((any Media) -> Swift.Void)?)
 }
 public final class Postbox {
+  public func messagesAtIds(_ ids: [MessageId]) -> SwiftSignalKit.Signal<[Message], SwiftSignalKit.NoError>
   public func transaction<T>(userInteractive: Swift.Bool, ignoreDisabled: Swift.Bool, _ f: @escaping (Transaction) -> T, file: Swift.String, line: Swift.Int) -> SwiftSignalKit.Signal<T, SwiftSignalKit.NoError>
 }
