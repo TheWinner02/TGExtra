@@ -12,6 +12,11 @@
 + (NSData *)prepareDefaultSilent:(NSData *)data;
 @end
 
+@interface TGExtraDeletedMessageCleaner : NSObject
++ (void)recordIds:(NSArray<NSNumber *> *)ids channelId:(NSNumber *)channelId transport:(id)transport;
++ (void)clearWithCompletion:(void (^)(NSInteger removed, NSInteger unresolved, NSString *error))completion;
+@end
+
 @interface MTRpcError : NSObject
 - (id)initWithErrorCode:(int)code errorDescription:(id)desc;
 @end

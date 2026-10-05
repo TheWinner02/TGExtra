@@ -30,7 +30,7 @@ static void TGExtraRecordDeletedMessageIds(NSArray<NSNumber *> *messageIds) {
     });
 }
 
-static NSData *TGExtraNeutralizeDeleteUpdates(NSData *data) {
+static NSData *TGExtraNeutralizeDeleteUpdates(NSData *data, id transport) {
     if (!data || data.length < 8) return nil;
 
     int32_t constructor = 0;
@@ -54,7 +54,7 @@ static NSData *TGExtraNeutralizeDeleteUpdates(NSData *data) {
 
         if (packedLength > 0 && offset + packedLength <= data.length) {
             NSData *uncompressed = decompressGzip(bytes + offset, packedLength);
-            return TGExtraNeutralizeDeleteUpdates(uncompressed);
+            return TGExtraNeutralizeDeleteUpdates(uncompressed, transport);
         }
         return nil;
     }
@@ -95,12 +95,22 @@ static NSData *TGExtraNeutralizeDeleteUpdates(NSData *data) {
         NSUInteger idsLength = (NSUInteger)count * sizeof(int32_t);
         if (idsOffset + idsLength > length) continue;
 
+        NSMutableArray<NSNumber *> *batchIds = [NSMutableArray array];
+
         for (int32_t index = 0; index < count; index++) {
             int32_t originalId = 0;
             memcpy(&originalId, bytes + idsOffset + ((NSUInteger)index * sizeof(int32_t)),
                    sizeof(originalId));
-            if (originalId != 0) [deletedIds addObject:@(originalId)];
+            if (originalId != 0) {
+                [deletedIds addObject:@(originalId)];
+                [batchIds addObject:@(originalId)];
+            }
         }
+        int64_t channelId = 0;
+        if (word == kUpdateDeleteChannelMessages) {
+            memcpy(&channelId, bytes + offset + 4, sizeof(channelId));
+        }
+        [TGExtraDeletedMessageCleaner recordIds:batchIds channelId:@(channelId) transport:transport];
         memset(bytes + idsOffset, 0, idsLength);
         changed = YES;
     }
@@ -220,7 +230,7 @@ static NSData *TGExtraNeutralizeDeleteUpdates(NSData *data) {
 
 - (id)parseMessage:(NSData *)data {
     if ([[NSUserDefaults standardUserDefaults] boolForKey:kAntiRevoke]) {
-        NSData *patched = TGExtraNeutralizeDeleteUpdates(data);
+        NSData *patched = TGExtraNeutralizeDeleteUpdates(data, self);
         if (patched) return %orig(patched);
     }
     return %orig;

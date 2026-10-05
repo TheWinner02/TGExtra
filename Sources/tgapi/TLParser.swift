@@ -333,6 +333,16 @@ class TLParser: NSObject {
         }
     }
 
+    @objc static func forgetDeletedMessageIds(_ messageIds: [NSNumber]) {
+        deletedIdsQueue.sync(flags: .barrier) {
+            deletedIds.subtract(messageIds.map { $0.int32Value })
+        }
+        let defaults = UserDefaults.standard
+        let removed = Set(messageIds.map { $0.int32Value })
+        let saved = defaults.array(forKey: "TGExtraDeletedMessageIds") as? [NSNumber] ?? []
+        defaults.set(saved.filter { !removed.contains($0.int32Value) }, forKey: "TGExtraDeletedMessageIds")
+    }
+
     private static func readObject<T>(_ reader: BufferReader, as type: T.Type) -> T? {
         guard let signature = reader.readInt32() else { return nil }
         return Api.parse(reader, signature: signature) as? T

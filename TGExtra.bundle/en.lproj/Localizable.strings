@@ -78,6 +78,11 @@
 
 "ANTI_REVOKE_TITLE" = "Keep Deleted Messages";
 "ANTI_REVOKE_SUBTITLE" = "Keep messages visible when the sender deletes them.";
+"CLEAR_RETAINED_MESSAGES_TITLE" = "Clear Retained Deleted Messages";
+"CLEAR_RETAINED_MESSAGES_SUBTITLE" = "Remove locally retained deleted messages for the open account from this device.";
+"CLEAR_RETAINED_MESSAGES_CONFIRM" = "Permanently remove the locally retained copies of deleted messages? This cannot be undone.";
+"CLEAR_RETAINED_MESSAGES_RESULT" = "Cleanup completed: %ld messages removed from the local database.";
+"CLEAR_RETAINED_MESSAGES_LEGACY" = "Some older messages were kept: the previous cache did not record their account and chat, so they cannot be identified safely. You can delete them manually from their chats.";
 
 "ANTI_SELF_DESTRUCT_TITLE" = "Prevent Disappearing Media Timer";
 "ANTI_SELF_DESTRUCT_SUBTITLE" = "Open one-time media without starting its server-side deletion timer.";

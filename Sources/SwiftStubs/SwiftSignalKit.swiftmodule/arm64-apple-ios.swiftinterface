@@ -3,4 +3,9 @@
 // swift-module-flags: -target arm64-apple-ios14.0 -enable-objc-interop -enable-library-evolution -module-name SwiftSignalKit
 import Swift
 public enum NoError : Swift.Error {}
-public final class Signal<Value, ErrorType> {}
+public protocol Disposable : AnyObject {
+  func dispose()
+}
+public final class Signal<Value, ErrorType> {
+  public func start(next: ((Value) -> Swift.Void)!, error: ((ErrorType) -> Swift.Void)!, completed: (() -> Swift.Void)!) -> any SwiftSignalKit.Disposable
+}

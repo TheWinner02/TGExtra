@@ -80,6 +80,11 @@
 
 "ANTI_REVOKE_TITLE" = "Conserva messaggi eliminati";
 "ANTI_REVOKE_SUBTITLE" = "Mantiene visibili i messaggi eliminati dal mittente.";
+"CLEAR_RETAINED_MESSAGES_TITLE" = "Cancella messaggi eliminati conservati";
+"CLEAR_RETAINED_MESSAGES_SUBTITLE" = "Rimuove da questo dispositivo i messaggi conservati dall'anti-eliminazione per l'account aperto.";
+"CLEAR_RETAINED_MESSAGES_CONFIRM" = "Vuoi rimuovere definitivamente le copie locali dei messaggi eliminati conservati? L'operazione non può essere annullata.";
+"CLEAR_RETAINED_MESSAGES_RESULT" = "Pulizia completata: %ld messaggi rimossi dal database locale.";
+"CLEAR_RETAINED_MESSAGES_LEGACY" = "Alcuni vecchi messaggi sono stati conservati: la cache precedente non indicava account e chat, quindi non è possibile identificarli in sicurezza. Puoi eliminarli manualmente dalle chat.";
 
 "ANTI_SELF_DESTRUCT_TITLE" = "Blocca timer dei media temporanei";
 "ANTI_SELF_DESTRUCT_SUBTITLE" = "Apre i media monouso senza avviare il timer di eliminazione sul server.";
