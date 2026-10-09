@@ -28,7 +28,13 @@
 @interface TGExtraStoryFilter : NSObject
 + (BOOL)isStoryDecorationClass:(NSString *)name;
 @end
+#ifdef __cplusplus
+extern "C" {
+#endif
 void TGExtraRefreshStoryVisibility(void);
+#ifdef __cplusplus
+}
+#endif
 
 @interface MTRpcError : NSObject
 - (id)initWithErrorCode:(int)code errorDescription:(id)desc;

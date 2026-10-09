@@ -67,6 +67,18 @@ jobs:
               run: |
                 make clean package FINALPACKAGE=1 STRIP=0 ${{ matrix.scheme_arg }}
 
+            - name: Verify internal tweak symbols
+              shell: bash
+              run: |
+                test -n "$(find .theos/obj -type f -name TGExtra.dylib -print -quit)"
+                while IFS= read -r library; do
+                  if nm -u "$library" | grep -E '(_TGExtra|__Z.*TGExtra)'; then
+                    echo "Unresolved internal TGExtra symbol in $library"
+                    exit 1
+                  fi
+                  nm -g "$library" | grep -E ' [Tt] _TGExtraRefreshStoryVisibility$'
+                done < <(find .theos/obj -type f -name TGExtra.dylib)
+
             - name: Upload DEB
               uses: actions/upload-artifact@v7
               with:
