@@ -470,7 +470,7 @@ class TGExtraDeletedMessageCleaner: NSObject {
                 guard let fields = components($0), records.contains(where: { matches(fields, record: $0) }) else { return false }
                 return seen.insert(fields.key).inserted
             }
-            return (ids, "ID chat: \(observed.count); lookup globale: \(globalCount); candidati: \(candidateCount); ID validati: \(ids.count). \(cellStatus)")
+            return (ids, "ID chat: \(observed.count); ID canali nativi: \(decoded.count); lookup globale: \(globalCount); candidati: \(candidateCount); ID validati: \(ids.count). \(cellStatus)")
         }, file: #file, line: #line)
         func finish(removedTokens: [String], diagnostic: String) {
                 precondition(Thread.isMainThread)

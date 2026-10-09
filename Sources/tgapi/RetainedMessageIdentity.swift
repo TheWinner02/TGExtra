@@ -9,7 +9,9 @@ struct RetainedMessageIdentity: Equatable {
     var key: String { "\(peer):\(namespace):\(id)" }
 
     static func channel(_ channel: Int64, message: Int32) -> Self? {
-        guard channel > 0, channel < (Int64(1) << 61), message > 0 else { return nil }
+        // Native PeerId.Id admits at most 56 positive bits. Validate before
+        // calling its decoder so malformed records cannot trigger an assertion.
+        guard channel > 0, channel < (Int64(1) << 56), message > 0 else { return nil }
         let bits = UInt64(channel)
         let packed = (bits & 0xffffffff) | (UInt64(2) << 32) | ((bits >> 32) << 35)
         return Self(peer: Int64(bitPattern: packed), namespace: 0, id: message)

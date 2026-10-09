@@ -18,7 +18,7 @@ struct RetainedMessageIdentityTests {
             let group = RetainedMessageIdentity(peer: Int64(100) | (Int64(namespace) << 32), namespace: 0, id: 42)
             precondition(group.matches(record: ["channel": NSNumber(value: 0), "id": NSNumber(value: 42)]))
         }
-        for invalid in [Int64(-1), 0, Int64(1) << 61] {
+        for invalid in [Int64(-1), 0, Int64(1) << 56, Int64(1) << 61] {
             precondition(RetainedMessageIdentity.channel(invalid, message: 42) == nil)
         }
         precondition(RetainedMessageIdentity.channel(100, message: 0) == nil)
