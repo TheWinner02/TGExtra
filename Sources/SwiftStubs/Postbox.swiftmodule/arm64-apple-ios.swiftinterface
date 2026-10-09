@@ -2,6 +2,7 @@
 // swift-compiler-version: Apple Swift version 5.10
 // swift-module-flags: -target arm64-apple-ios14.0 -enable-objc-interop -enable-library-evolution -module-name Postbox
 import Swift
+import Foundation
 import SwiftSignalKit
 public protocol MessageAttribute : AnyObject {}
 @frozen public struct PeerId {
@@ -11,6 +12,7 @@ public protocol MessageAttribute : AnyObject {}
 }
 public struct MessageId {
   public init(peerId: PeerId, namespace: Swift.Int32, id: Swift.Int32)
+  public static func decodeArrayFromData(_ data: Foundation.Data) -> [MessageId]
 }
 public protocol Media : AnyObject {}
 public final class Message {}

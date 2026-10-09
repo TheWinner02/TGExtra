@@ -14,6 +14,7 @@
 
 @interface TGExtraDeletedMessageCleaner : NSObject
 + (void)registerNode:(id)node;
++ (BOOL)nodeHasDeletedMessage:(id)node;
 + (void)bindUI:(UIViewController *)ui presenter:(UIViewController *)presenter;
 + (NSString *)statusForUI:(UIViewController *)ui;
 + (void)recordIds:(NSArray<NSNumber *> *)ids channelId:(NSNumber *)channelId transport:(id)transport;

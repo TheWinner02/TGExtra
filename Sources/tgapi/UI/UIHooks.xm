@@ -382,8 +382,7 @@ static void TGExtraFinishAutomaticScheduleUI(void) {
         [TGExtraActiveMessageNodes addObject:self];
     }
 
-    NSNumber *messageId = [TLParser getMessageIdFromNode:self];
-    BOOL isDeleted = messageId && [TLParser isDeleted:messageId];
+    BOOL isDeleted = [TGExtraDeletedMessageCleaner nodeHasDeletedMessage:self];
     UIImageView *icon = (UIImageView *)[self.view viewWithTag:kDeletedMessageIconTag];
 
     if (!isDeleted) {

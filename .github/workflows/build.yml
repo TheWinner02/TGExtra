@@ -46,6 +46,14 @@ jobs:
                 swiftc Sources/tgapi/StoryVisibility.swift scripts/test-story-visibility.swift -o "$RUNNER_TEMP/tgextra-story-tests"
                 "$RUNNER_TEMP/tgextra-story-tests"
 
+            - name: Test retained-message identity and decoder symbol
+              shell: bash
+              run: |
+                swiftc Sources/tgapi/RetainedMessageIdentity.swift scripts/test-retained-message-identity.swift -o "$RUNNER_TEMP/tgextra-retained-tests"
+                "$RUNNER_TEMP/tgextra-retained-tests"
+                swiftc -module-name Postbox -emit-library scripts/retained-decoder-symbol-fixture.swift -o "$RUNNER_TEMP/retained-decoder-fixture.dylib"
+                nm -g "$RUNNER_TEMP/retained-decoder-fixture.dylib" | grep -F '$s7Postbox9MessageIdV19decodeArrayFromDataySayACG10Foundation0G0VFZ'
+
             - name: Set up Theos
               uses: waruhachi/theos-action@v2.4.6
               with:

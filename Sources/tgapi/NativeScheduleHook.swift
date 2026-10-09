@@ -235,11 +235,30 @@ class TGExtraDeletedMessageCleaner: NSObject {
     private static var observedIds: [String: [String: MessageId]] = [:]
     private static var readStatus: [String: String] = [:]
 
-    private struct ReflectedId {
-        let peer: Int64
-        let namespace: Int32
-        let id: Int32
-        var key: String { "\(peer):\(namespace):\(id)" }
+    private typealias ReflectedId = RetainedMessageIdentity
+
+    // Public native batch decoder: PeerId and MessageId are constructed inside
+    // Postbox, not across the layout-only stub's incompatible scalar ABI.
+    private static func decodedChannelIds(_ records: [[String: Any]]) -> [MessageId] {
+        let fields = records.compactMap { record -> ReflectedId? in
+            guard let channel = (record["channel"] as? NSNumber)?.int64Value,
+                  let id = (record["id"] as? NSNumber)?.int32Value else { return nil }
+            return ReflectedId.channel(channel, message: id)
+        }
+        guard !fields.isEmpty else { return [] }
+        let symbols = [
+            "$s7Postbox9MessageIdV19decodeArrayFromDataySayACG10Foundation0G0VFZ",
+            "$s7Postbox9MessageIdV19decodeArrayFromDataySayACG10Foundation4DataVFZ"
+        ]
+        for symbol in symbols {
+            guard dlsym(telegramCoreHandle, symbol) != nil || dlsym(nil, symbol) != nil else { continue }
+            let result = MessageId.decodeArrayFromData(ReflectedId.encoded(fields))
+            // Reject unfamiliar client layouts rather than deleting by a guess.
+            guard result.count == fields.count,
+                  zip(result, fields).allSatisfy({ components($0.0) == $0.1 }) else { return [] }
+            return result
+        }
+        return []
     }
 
     // Do not invoke PeerId getters/toInt64 through the layout-only scheduling
@@ -259,15 +278,21 @@ class TGExtraDeletedMessageCleaner: NSObject {
     }
 
     private static func matches(_ id: ReflectedId, record: [String: Any]) -> Bool {
-        guard id.id == (record["id"] as? NSNumber)?.int32Value, id.namespace == 0 else { return false }
-        if let peer = (record["peer"] as? NSNumber)?.int64Value {
-            return id.peer == peer && id.namespace == (record["namespace"] as? NSNumber)?.int32Value
+        id.matches(record: record)
+    }
+
+    @objc(nodeHasDeletedMessage:)
+    static func nodeHasDeletedMessage(_ node: AnyObject) -> Bool {
+        guard Thread.isMainThread,
+              let item = nativeStoredValue(named: "item", in: node),
+              let context = nativeStoredValue(named: "context", in: node) ?? nativeStoredValue(named: "context", in: item),
+              let account = nativeStoredValue(named: "account", in: context) as? Account,
+              let entry = retainedMessageAccounts().first(where: { $0.0 === account }) else { return false }
+        let records = (UserDefaults.standard.array(forKey: recordsKey) as? [[String: Any]] ?? [])
+            .filter { ($0["account"] as? String) == entry.2 }
+        return messageIds(in: item).compactMap { components($0) }.contains { id in
+            records.contains { matches(id, record: $0) }
         }
-        let packed = UInt64(bitPattern: id.peer)
-        let namespace = (packed >> 32) & 7
-        let channel = (record["channel"] as? NSNumber)?.int64Value ?? 0
-        let peer = (packed & 0xffffffff) | ((packed >> 35) << 32)
-        return channel == 0 ? namespace < 2 : channel > 0 && namespace == 2 && peer == UInt64(channel)
     }
 
     private static func messageIds(in value: Any, depth: Int = 0) -> [MessageId] {
@@ -424,12 +449,14 @@ class TGExtraDeletedMessageCleaner: NSObject {
         clearing = true
         // Capture on the main queue; never access the UI registry on Postbox's queue.
         let observed = Array((observedIds[path] ?? [:]).values)
+        let decoded = decodedChannelIds(records)
         let cellStatus = readStatus[path] ?? "Nessuna cella acquisita."
         let signal = account.1.transaction(userInteractive: true, ignoreDisabled: false, { transaction -> ([MessageId], String) in
             let globalIds = records.filter { ($0["channel"] as? NSNumber)?.int64Value == 0 }
                 .compactMap { ($0["id"] as? NSNumber)?.int32Value }
             var ids = transaction.messageIdsForGlobalIds(globalIds)
             let globalCount = ids.count
+            ids.append(contentsOf: decoded)
             for record in records {
                 let candidates = observed.filter { id in
                     guard let fields = components(id) else { return false }
