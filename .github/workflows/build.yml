@@ -49,7 +49,7 @@ jobs:
             - name: Test retained-message identity and decoder symbol
               shell: bash
               run: |
-                swiftc Sources/tgapi/RetainedMessageIdentity.swift scripts/test-retained-message-identity.swift -o "$RUNNER_TEMP/tgextra-retained-tests"
+                swiftc Sources/tgapi/RetainedMessageIdentity.swift Sources/tgapi/RetainedMessageIndex.swift scripts/test-retained-message-identity.swift -o "$RUNNER_TEMP/tgextra-retained-tests"
                 "$RUNNER_TEMP/tgextra-retained-tests"
                 swiftc -module-name Postbox -emit-library scripts/retained-decoder-symbol-fixture.swift -o "$RUNNER_TEMP/retained-decoder-fixture.dylib"
                 nm -g "$RUNNER_TEMP/retained-decoder-fixture.dylib" | grep -F '$s7Postbox9MessageIdV19decodeArrayFromDataySayACG10Foundation0G0VFZ'

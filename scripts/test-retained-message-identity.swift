@@ -31,6 +31,32 @@ struct RetainedMessageIdentityTests {
         precondition(Array(bytes[4..<12]) == [100, 0, 0, 0, 2, 0, 0, 0])
         precondition(Array(bytes[12..<20]) == [0, 0, 0, 0, 42, 0, 0, 0])
         precondition(Array(RetainedMessageIdentity.encoded([])) == [0, 0, 0, 0])
-        print("Retained-message identity: all checks passed")
+        let scoped: [String: Any] = ["account": "account-A", "channel": NSNumber(value: 100), "id": NSNumber(value: 42)]
+        var index = RetainedMessageIndex(records: [scoped])
+        precondition(index.hasRecords(account: "account-A"))
+        precondition(!index.hasRecords(account: "account-B"))
+        precondition(index.contains(first, account: "account-A"))
+        precondition(!index.contains(first, account: "account-B"))
+        precondition(!index.contains(second, account: "account-A"))
+        precondition(index.shouldObserve(first, account: "account-A"))
+        precondition(!index.shouldObserve(second, account: "account-A"))
+        var stale = scoped
+        stale["peer"] = NSNumber(value: second.peer)
+        stale["namespace"] = NSNumber(value: 0)
+        index = RetainedMessageIndex(records: [stale])
+        precondition(!index.contains(first, account: "account-A"))
+        precondition(index.shouldObserve(first, account: "account-A"), "Original event must remain available for metadata repair")
+        index = RetainedMessageIndex(records: [])
+        precondition(!index.contains(first, account: "account-A"), "Removed records must invalidate markers")
+        precondition(!index.shouldObserve(first, account: "account-A"))
+        let many = (1...10_000).map { raw -> [String: Any] in
+            ["account": "account-A", "channel": NSNumber(value: 100), "id": NSNumber(value: raw)]
+        }
+        index = RetainedMessageIndex(records: many)
+        for _ in 0..<10_000 {
+            precondition(index.contains(first, account: "account-A"))
+            precondition(!index.contains(second, account: "account-A"))
+        }
+        print("Retained-message identity and in-memory index: all checks passed")
     }
 }

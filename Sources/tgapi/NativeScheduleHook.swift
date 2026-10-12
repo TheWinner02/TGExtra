@@ -181,6 +181,18 @@ private final class RetainedAccountReference {
 }
 
 private var retainedAccountReferences: [RetainedAccountReference] = []
+private var retainedAccountPathKey: UInt8 = 0
+
+// Account objects own immutable database paths. Cache per object, not globally
+// by whichever account happened to be visible last.
+private func retainedAccountPath(_ account: Account) -> String? {
+    if let path = objc_getAssociatedObject(account, &retainedAccountPathKey) as? String { return path }
+    guard let network = nativeStoredValue(named: "network", in: account),
+          let path = nativeStoredValue(named: "basePath", in: network) as? String else { return nil }
+    registerRetainedAccount(account)
+    objc_setAssociatedObject(account, &retainedAccountPathKey, path, .OBJC_ASSOCIATION_COPY_NONATOMIC)
+    return path
+}
 
 private func registerRetainedAccount(_ account: Account) {
     retainedAccountReferences.removeAll { $0.account == nil }
@@ -234,6 +246,14 @@ class TGExtraDeletedMessageCleaner: NSObject {
     // Full native IDs observed in chat, scoped by database, never by raw ID alone.
     private static var observedIds: [String: [String: MessageId]] = [:]
     private static var readStatus: [String: String] = [:]
+    private static var markerIndex = RetainedMessageIndex(records:
+        UserDefaults.standard.array(forKey: recordsKey) as? [[String: Any]] ?? [])
+
+    private static func storeRecords(_ records: [[String: Any]]) {
+        precondition(Thread.isMainThread)
+        UserDefaults.standard.set(records, forKey: recordsKey)
+        markerIndex = RetainedMessageIndex(records: records)
+    }
 
     private typealias ReflectedId = RetainedMessageIdentity
 
@@ -281,20 +301,6 @@ class TGExtraDeletedMessageCleaner: NSObject {
         id.matches(record: record)
     }
 
-    @objc(nodeHasDeletedMessage:)
-    static func nodeHasDeletedMessage(_ node: AnyObject) -> Bool {
-        guard Thread.isMainThread,
-              let item = nativeStoredValue(named: "item", in: node),
-              let context = nativeStoredValue(named: "context", in: node) ?? nativeStoredValue(named: "context", in: item),
-              let account = nativeStoredValue(named: "account", in: context) as? Account,
-              let entry = retainedMessageAccounts().first(where: { $0.0 === account }) else { return false }
-        let records = (UserDefaults.standard.array(forKey: recordsKey) as? [[String: Any]] ?? [])
-            .filter { ($0["account"] as? String) == entry.2 }
-        return messageIds(in: item).compactMap { components($0) }.contains { id in
-            records.contains { matches(id, record: $0) }
-        }
-    }
-
     private static func messageIds(in value: Any, depth: Int = 0) -> [MessageId] {
         if let id = value as? MessageId { return [id] }
         if let id = nativeStoredValue(named: "id", in: value) as? MessageId { return [id] }
@@ -339,51 +345,40 @@ class TGExtraDeletedMessageCleaner: NSObject {
     }
 
     @objc(registerNode:)
-    static func registerNode(_ node: AnyObject) {
-        guard Thread.isMainThread else { return }
-        let item = nativeStoredValue(named: "item", in: node)
+    static func registerNode(_ node: AnyObject) -> Bool {
+        guard Thread.isMainThread,
+              let item = nativeStoredValue(named: "item", in: node) else { return false }
         let context = nativeStoredValue(named: "context", in: node) ??
-            item.flatMap { nativeStoredValue(named: "context", in: $0) }
-        if let context,
-           let account = nativeStoredValue(named: "account", in: context) as? Account {
-            registerRetainedAccount(account)
-            if let item,
-               let entry = retainedMessageAccounts().first(where: { $0.0 === account }) {
-                let ids = messageIds(in: item)
-                var readable = 0
-                for id in ids {
-                    if let fields = components(id) {
-                        observedIds[entry.2, default: [:]][fields.key] = id
-                        readable += 1
-                    }
-                }
-                if readable > 0 {
-                    readStatus[entry.2] = "Ultima cella: \(readable) ID acquisiti."
-                } else if let id = ids.first {
-                    // Field names/types only: never include message text or media.
-                    let fields = Mirror(reflecting: id).children.map { "\($0.label ?? "?"):\(type(of: $0.value))" }.joined(separator: ",")
-                    let peer = nativeStoredValue(named: "peerId", in: id)
-                    let peerFields = peer.map { Mirror(reflecting: $0).children.map { "\($0.label ?? "?"):\(type(of: $0.value))" }.joined(separator: ",") } ?? "assente"
-                    readStatus[entry.2] = "ID non leggibile [\(fields)]; peer [\(peerFields)]."
-                } else {
-                    let fields = Mirror(reflecting: item).children.map { $0.label ?? "?" }.joined(separator: ",")
-                    readStatus[entry.2] = "ID non acquisito: \(type(of: item)) [\(fields)]."
-                }
-                enrichRecords(path: entry.2)
+            nativeStoredValue(named: "context", in: item)
+        guard let context,
+              let account = nativeStoredValue(named: "account", in: context) as? Account,
+              let path = retainedAccountPath(account) else { return false }
+        guard markerIndex.hasRecords(account: path) else { return false }
+        var deleted = false
+        var acquired = 0
+        for id in messageIds(in: item) {
+            guard let fields = components(id) else { continue }
+            if markerIndex.contains(fields, account: path) { deleted = true }
+            if markerIndex.shouldObserve(fields, account: path), observedIds[path]?[fields.key] == nil {
+                observedIds[path, default: [:]][fields.key] = id
+                acquired += 1
             }
         }
+        if acquired > 0 { readStatus[path] = "Ultima cella: \(acquired) nuovi ID conservati acquisiti." }
+        return deleted
     }
 
     private static func enrichRecords(path: String) {
         var records = UserDefaults.standard.array(forKey: recordsKey) as? [[String: Any]] ?? []
         var changed = false
+        let observedFields = (observedIds[path] ?? [:]).values.compactMap { components($0) }
         for index in records.indices where (records[index]["account"] as? String) == path {
             // Revalidate metadata saved by earlier builds against the original
             // account/channel deletion event, not an old derived peer value.
             var event = records[index]
             event.removeValue(forKey: "peer")
             event.removeValue(forKey: "namespace")
-            let matches = (observedIds[path] ?? [:]).values.compactMap { components($0) }.filter { id in
+            let matches = observedFields.filter { id in
                 Self.matches(id, record: event)
             }
             if matches.count == 1, let id = matches.first,
@@ -394,7 +389,7 @@ class TGExtraDeletedMessageCleaner: NSObject {
                 changed = true
             }
         }
-        if changed { UserDefaults.standard.set(records, forKey: recordsKey) }
+        if changed { storeRecords(records) }
     }
 
     @objc(recordIds:channelId:transport:)
@@ -419,7 +414,7 @@ class TGExtraDeletedMessageCleaner: NSObject {
                     ($0["id"] as? NSNumber) == id
                 }) { records.append(record) }
             }
-            UserDefaults.standard.set(records, forKey: recordsKey)
+            storeRecords(records)
             enrichRecords(path: account.2)
             UserDefaults.standard.set("Eliminazione registrata: \(ids.count) messaggi associati all'account",
                 forKey: "TGExtraRetainedMessageStatus")
@@ -477,7 +472,14 @@ class TGExtraDeletedMessageCleaner: NSObject {
                 let tokens = Set(removedTokens)
                 let current = UserDefaults.standard.array(forKey: recordsKey) as? [[String: Any]] ?? []
                 let remaining = current.filter { !tokens.contains($0["token"] as? String ?? "") }
-                UserDefaults.standard.set(remaining, forKey: recordsKey)
+                storeRecords(remaining)
+                // Drop only IDs that no longer belong to a retained event.
+                for path in Array(observedIds.keys) {
+                    observedIds[path] = observedIds[path]?.filter { _, id in
+                        guard let fields = components(id) else { return false }
+                        return markerIndex.shouldObserve(fields, account: path)
+                    }
+                }
                 let retainedIds = Set(remaining.compactMap { ($0["id"] as? NSNumber)?.int32Value })
                 let clearedIds = records.filter { tokens.contains($0["token"] as? String ?? "") }
                     .compactMap { ($0["id"] as? NSNumber)?.int32Value }

@@ -377,12 +377,11 @@ static void TGExtraFinishAutomaticScheduleUI(void) {
     }
 
     TGExtraEnsureActiveMessageNodes();
-    [TGExtraDeletedMessageCleaner registerNode:self];
+    BOOL isDeleted = [TGExtraDeletedMessageCleaner registerNode:self];
     @synchronized (TGExtraActiveMessageNodes) {
         [TGExtraActiveMessageNodes addObject:self];
     }
 
-    BOOL isDeleted = [TGExtraDeletedMessageCleaner nodeHasDeletedMessage:self];
     UIImageView *icon = (UIImageView *)[self.view viewWithTag:kDeletedMessageIconTag];
 
     if (!isDeleted) {
