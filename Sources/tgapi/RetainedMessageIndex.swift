@@ -15,7 +15,16 @@ struct RetainedMessageIndex {
             var event = record
             event.removeValue(forKey: "peer")
             event.removeValue(forKey: "namespace")
-            accounts[account, default: [:]][id, default: []].append(Entry(record: record, event: event))
+            var validated = record
+            if let peer = (record["peer"] as? NSNumber)?.int64Value,
+               let namespace = (record["namespace"] as? NSNumber)?.int32Value {
+                if !RetainedMessageIdentity(peer: peer, namespace: namespace, id: id).matches(record: event) {
+                    validated = event
+                }
+            } else {
+                validated = event
+            }
+            accounts[account, default: [:]][id, default: []].append(Entry(record: validated, event: event))
         }
     }
 
