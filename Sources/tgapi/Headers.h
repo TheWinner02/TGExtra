@@ -24,6 +24,10 @@
 + (BOOL)nodeIsAdvertisement:(id)node;
 @end
 
+@interface TGExtraRetainedArchiveController : NSObject
++ (void)presentFromUI:(UIViewController *)ui strings:(NSDictionary<NSString *, NSString *> *)strings;
+@end
+
 @interface TGExtraStoryFilter : NSObject
 + (BOOL)isStoryDecorationClass:(NSString *)name;
 @end

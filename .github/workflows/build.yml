@@ -54,6 +54,12 @@ jobs:
                 swiftc -module-name Postbox -emit-library scripts/retained-decoder-symbol-fixture.swift -o "$RUNNER_TEMP/retained-decoder-fixture.dylib"
                 nm -g "$RUNNER_TEMP/retained-decoder-fixture.dylib" | grep -F '$s7Postbox9MessageIdV19decodeArrayFromDataySayACG10Foundation0G0VFZ'
 
+            - name: Test retained archive grouping
+              shell: bash
+              run: |
+                swiftc Sources/tgapi/RetainedMessageArchive.swift scripts/test-retained-archive.swift -o "$RUNNER_TEMP/tgextra-archive-tests"
+                "$RUNNER_TEMP/tgextra-archive-tests"
+
             - name: Fetch Theos
               uses: actions/checkout@v7
               with:

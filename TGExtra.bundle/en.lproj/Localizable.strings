@@ -115,6 +115,30 @@
 "ENABLE_FAKE_LOCATION_SUBTITLE" = "Allows you to spoof your device's GPS Location";
 "SELECT_FAKE_LOCATION_TITLE" = "Select Location";
 
+/* Retained message archive */
+"RETAINED_ARCHIVE_TITLE" = "Retained deleted messages";
+"RETAINED_ARCHIVE_SUBTITLE" = "Browse this account's retained messages, grouped by chat.";
+"RETAINED_ARCHIVE_EMPTY" = "No retained messages registered for this account.";
+"RETAINED_ARCHIVE_LOADING" = "Reading local messages…";
+"RETAINED_ARCHIVE_ACCOUNT" = "Open a chat in the account to inspect, then reopen TGExtra.";
+"RETAINED_ARCHIVE_UNKNOWN" = "Unidentified chats";
+"RETAINED_ARCHIVE_CHAT" = "Chat";
+"RETAINED_ARCHIVE_TOPIC" = "Topic";
+"RETAINED_ARCHIVE_COUNT" = "%ld retained messages";
+"RETAINED_ARCHIVE_MISSING_COUNT" = "%ld unavailable";
+"RETAINED_ARCHIVE_NOTE" = "Read-only local archive. Attachments are not downloaded. Older records without an account cannot be listed safely. Use refresh to reload.";
+"RETAINED_ARCHIVE_UNAVAILABLE" = "Record retained, but the message could not be read from the local database.";
+"RETAINED_ARCHIVE_TEXT" = "Message";
+"RETAINED_ARCHIVE_PHOTO" = "Photo";
+"RETAINED_ARCHIVE_VIDEO" = "Video";
+"RETAINED_ARCHIVE_AUDIO" = "Audio / voice message";
+"RETAINED_ARCHIVE_FILE" = "File";
+"RETAINED_ARCHIVE_CONTACT" = "Contact";
+"RETAINED_ARCHIVE_LOCATION" = "Location";
+"RETAINED_ARCHIVE_POLL" = "Poll";
+"RETAINED_ARCHIVE_STICKER" = "Sticker";
+"RETAINED_ARCHIVE_ATTACHMENT" = "Attachment";
+
 /* Extras */
 "APPLY" = "Apply";
 "APPLY_CHANGES" = "Are you sure you want to Apply These Changes";

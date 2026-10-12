@@ -187,7 +187,7 @@ typedef NS_ENUM(NSInteger, TABLE_VIEW_SECTIONS) {
 		case READ_RECEIPT:
 		   return 2;
 		case MISC:
-		   return 10;
+		   return 11;
 		case FILE_FIXER:
 		   return 2;
 		case FAKE_LOCATION:
@@ -240,6 +240,7 @@ typedef NS_ENUM(NSInteger, TABLE_VIEW_SECTIONS) {
 		normalCell = [[UITableViewCell alloc] initWithStyle:UITableViewCellStyleSubtitle reuseIdentifier:@"normalCell"];
 	}
 
+	normalCell.accessoryType = UITableViewCellAccessoryNone;
 	return normalCell;
 }
 
@@ -366,6 +367,18 @@ typedef NS_ENUM(NSInteger, TABLE_VIEW_SECTIONS) {
 	else if (indexPath.section == 2) { // MISC
 		if (indexPath.row == 3) {
 			cell = [self normalCellFromTableView:tableView];
+			cell.textLabel.text = TGLoc(@"RETAINED_ARCHIVE_TITLE");
+			cell.detailTextLabel.text = TGLoc(@"RETAINED_ARCHIVE_SUBTITLE");
+			cell.imageView.image = [UIImage systemImageNamed:@"tray.full"];
+			cell.imageView.tintColor = UIColor.systemBlueColor;
+			cell.accessoryView = nil;
+			cell.accessoryType = UITableViewCellAccessoryDisclosureIndicator;
+			cell.textLabel.numberOfLines = 0;
+			cell.detailTextLabel.numberOfLines = 0;
+			return cell;
+		}
+		if (indexPath.row == 4) {
+			cell = [self normalCellFromTableView:tableView];
 			cell.textLabel.text = TGLoc(@"CLEAR_RETAINED_MESSAGES_TITLE");
 			cell.detailTextLabel.text = TGLoc(@"CLEAR_RETAINED_MESSAGES_SUBTITLE");
 			NSString *cleanupStatus = [TGExtraDeletedMessageCleaner statusForUI:self];
@@ -399,23 +412,23 @@ typedef NS_ENUM(NSInteger, TABLE_VIEW_SECTIONS) {
 			cell.textLabel.text = TGLoc(@"ANTI_REVOKE_TITLE");
 			cell.detailTextLabel.text = TGLoc(@"ANTI_REVOKE_SUBTITLE");
 		}
-		else if (indexPath.row == 4) {
+		else if (indexPath.row == 5) {
 			cell.textLabel.text = TGLoc(@"ANTI_SELF_DESTRUCT_TITLE");
 			cell.detailTextLabel.text = TGLoc(@"ANTI_SELF_DESTRUCT_SUBTITLE");
 		}
-		else if (indexPath.row == 5) {
+		else if (indexPath.row == 6) {
 			cell.textLabel.text = TGLoc(@"ANTI_SCREENSHOT_TITLE");
 			cell.detailTextLabel.text = TGLoc(@"ANTI_SCREENSHOT_SUBTITLE");
 		}
-		else if (indexPath.row == 6) {
+		else if (indexPath.row == 7) {
 			cell.textLabel.text = TGLoc(@"CONFIRM_CALLS_TITLE");
 			cell.detailTextLabel.text = TGLoc(@"CONFIRM_CALLS_SUBTITLE");
 		}
-		else if (indexPath.row == 7) {
+		else if (indexPath.row == 8) {
 			cell.textLabel.text = TGLoc(@"HIDE_STORIES_TITLE");
 			cell.detailTextLabel.text = TGLoc(@"HIDE_STORIES_SUBTITLE");
 		}
-		else if (indexPath.row == 8) {
+		else if (indexPath.row == 9) {
 			cell.textLabel.text = TGLoc(@"AUTOMATIC_SCHEDULE_TITLE");
 			NSString *subtitle = TGLoc(@"AUTOMATIC_SCHEDULE_SUBTITLE");
 			NSString *status = [[NSUserDefaults standardUserDefaults] stringForKey:@"TGExtraAutomaticScheduleStatus"];
@@ -434,7 +447,7 @@ typedef NS_ENUM(NSInteger, TABLE_VIEW_SECTIONS) {
 				cell.detailTextLabel.text = subtitle;
 			}
 		}
-		else if (indexPath.row == 9) {
+		else if (indexPath.row == 10) {
 			cell.textLabel.text = TGLoc(@"DEFAULT_SILENT_MESSAGES_TITLE");
 			NSString *subtitle = TGLoc(@"DEFAULT_SILENT_MESSAGES_SUBTITLE");
 			NSString *status = [[NSUserDefaults standardUserDefaults]
@@ -626,6 +639,23 @@ typedef NS_ENUM(NSInteger, TABLE_VIEW_SECTIONS) {
 - (void)tableView:(UITableView *)tableView didSelectRowAtIndexPath:(NSIndexPath *)indexPath {
     [tableView deselectRowAtIndexPath:indexPath animated:YES];
 	if (indexPath.section == MISC && indexPath.row == 3) {
+		NSMutableDictionary *strings = [NSMutableDictionary dictionary];
+		NSDictionary *keys = @{@"title": @"RETAINED_ARCHIVE_TITLE", @"empty": @"RETAINED_ARCHIVE_EMPTY",
+			@"loading": @"RETAINED_ARCHIVE_LOADING", @"account": @"RETAINED_ARCHIVE_ACCOUNT",
+			@"unknown": @"RETAINED_ARCHIVE_UNKNOWN", @"chat": @"RETAINED_ARCHIVE_CHAT",
+			@"topic": @"RETAINED_ARCHIVE_TOPIC", @"count": @"RETAINED_ARCHIVE_COUNT",
+			@"missingCount": @"RETAINED_ARCHIVE_MISSING_COUNT", @"note": @"RETAINED_ARCHIVE_NOTE",
+			@"unavailable": @"RETAINED_ARCHIVE_UNAVAILABLE", @"text": @"RETAINED_ARCHIVE_TEXT",
+			@"photo": @"RETAINED_ARCHIVE_PHOTO", @"video": @"RETAINED_ARCHIVE_VIDEO",
+			@"audio": @"RETAINED_ARCHIVE_AUDIO", @"file": @"RETAINED_ARCHIVE_FILE",
+			@"contact": @"RETAINED_ARCHIVE_CONTACT", @"location": @"RETAINED_ARCHIVE_LOCATION",
+			@"poll": @"RETAINED_ARCHIVE_POLL", @"sticker": @"RETAINED_ARCHIVE_STICKER",
+			@"attachment": @"RETAINED_ARCHIVE_ATTACHMENT"};
+		for (NSString *key in keys) strings[key] = TGLoc(keys[key]);
+		[TGExtraRetainedArchiveController presentFromUI:self strings:strings];
+		return;
+	}
+	if (indexPath.section == MISC && indexPath.row == 4) {
 		[self clearRetainedMessages];
 		return;
 	}
@@ -725,12 +755,12 @@ typedef NS_ENUM(NSInteger, TABLE_VIEW_SECTIONS) {
                 case 0: return kDisableAllAds;
                 case 1: return kDisableForwardRestriction;
                 case 2: return kAntiRevoke;
-                case 4: return kAntiSelfDestruct;
-                case 5: return kDisableScreenshotNotification;
-                case 6: return kConfirmCalls;
-                case 7: return kHideStories;
-                case 8: return kAutomaticSchedule;
-                case 9: return kDefaultSilentMessages;
+                case 5: return kAntiSelfDestruct;
+                case 6: return kDisableScreenshotNotification;
+                case 7: return kConfirmCalls;
+                case 8: return kHideStories;
+                case 9: return kAutomaticSchedule;
+                case 10: return kDefaultSilentMessages;
                 default: return nil;
             }
         case 3:

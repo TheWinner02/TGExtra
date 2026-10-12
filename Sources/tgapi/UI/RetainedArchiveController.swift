@@ -1,0 +1,169 @@
+import UIKit
+
+private func archiveChatTitle(_ chat: RetainedArchiveChat, strings: [String: String]) -> String {
+    if !chat.title.isEmpty { return chat.title }
+    guard let packed = Int64(chat.key) else { return strings["unknown"] ?? "Unidentified chats" }
+    let bits = UInt64(bitPattern: packed)
+    let raw = (bits & 0xffffffff) | ((bits >> 35) << 32)
+    return "\(strings["chat"] ?? "Chat") \(raw)"
+}
+
+private func archiveMetadata(_ message: RetainedArchiveMessage, strings: [String: String]) -> String {
+    var parts = ["ID \(message.id)"]
+    if let timestamp = message.timestamp {
+        parts.append(DateFormatter.localizedString(from: Date(timeIntervalSince1970: TimeInterval(timestamp)),
+            dateStyle: .medium, timeStyle: .short))
+    }
+    if let topic = message.topic {
+        let label = message.topicTitle.flatMap { $0.isEmpty ? nil : $0 } ?? "#\(topic)"
+        parts.append("\(strings["topic"] ?? "Topic"): \(label)")
+    }
+    if message.kind != "text" { parts.append(strings[message.kind] ?? strings["attachment"] ?? "Attachment") }
+    return parts.joined(separator: " · ")
+}
+
+@objc(TGExtraRetainedArchiveController)
+final class TGExtraRetainedArchiveController: UITableViewController {
+    private weak var sourceUI: UIViewController?
+    private var strings: [String: String] = [:]
+    private var chats: [RetainedArchiveChat] = []
+    private var request: RetainedArchiveLoad?
+    private var loading = false
+
+    @objc(presentFromUI:strings:)
+    static func present(from ui: UIViewController, strings: [String: String]) {
+        let controller = TGExtraRetainedArchiveController(style: .insetGrouped)
+        controller.sourceUI = ui
+        controller.strings = strings
+        ui.present(UINavigationController(rootViewController: controller), animated: true)
+    }
+
+    override func viewDidLoad() {
+        super.viewDidLoad()
+        title = strings["title"]
+        tableView.rowHeight = UITableView.automaticDimension
+        tableView.estimatedRowHeight = 72
+        navigationItem.leftBarButtonItem = UIBarButtonItem(barButtonSystemItem: .done, target: self, action: #selector(close))
+        navigationItem.rightBarButtonItem = UIBarButtonItem(barButtonSystemItem: .refresh, target: self, action: #selector(reloadArchive))
+        reloadArchive()
+    }
+
+    deinit { request?.cancel() }
+
+    @objc private func close() {
+        request?.cancel()
+        dismiss(animated: true)
+    }
+
+    private func showBackground(_ text: String) {
+        let label = UILabel()
+        label.text = text
+        label.textColor = .secondaryLabel
+        label.textAlignment = .center
+        label.numberOfLines = 0
+        tableView.backgroundView = label
+    }
+
+    @objc private func reloadArchive() {
+        request?.cancel()
+        chats = []
+        loading = true
+        tableView.reloadData()
+        showBackground(strings["loading"] ?? "Loading…")
+        navigationItem.rightBarButtonItem?.isEnabled = false
+        guard let ui = sourceUI else {
+            loading = false
+            showBackground(strings["account"] ?? "Open a chat and try again.")
+            return
+        }
+        request = TGExtraDeletedMessageCleaner.loadArchive(ui) { [weak self] result, error in
+            guard let self else { return }
+            self.loading = false
+            self.navigationItem.rightBarButtonItem?.isEnabled = true
+            self.chats = result ?? []
+            if error != nil { self.showBackground(self.strings["account"] ?? "Open a chat and try again.") }
+            else if self.chats.isEmpty { self.showBackground(self.strings["empty"] ?? "No retained messages for this account.") }
+            else { self.tableView.backgroundView = nil }
+            self.tableView.reloadData()
+        }
+    }
+
+    override func tableView(_ tableView: UITableView, numberOfRowsInSection section: Int) -> Int { chats.count }
+
+    override func tableView(_ tableView: UITableView, titleForFooterInSection section: Int) -> String? {
+        loading ? nil : strings["note"]
+    }
+
+    override func tableView(_ tableView: UITableView, cellForRowAt indexPath: IndexPath) -> UITableViewCell {
+        let cell = tableView.dequeueReusableCell(withIdentifier: "chat") ?? UITableViewCell(style: .subtitle, reuseIdentifier: "chat")
+        let chat = chats[indexPath.row]
+        cell.textLabel?.text = archiveChatTitle(chat, strings: strings)
+        let missing = chat.messages.filter { !$0.available }.count
+        var subtitle = String(format: strings["count"] ?? "%ld retained messages", chat.messages.count)
+        if missing > 0 { subtitle += " · " + String(format: strings["missingCount"] ?? "%ld unavailable", missing) }
+        cell.detailTextLabel?.text = subtitle
+        cell.textLabel?.numberOfLines = 0
+        cell.detailTextLabel?.numberOfLines = 0
+        cell.accessoryType = .disclosureIndicator
+        cell.imageView?.image = UIImage(systemName: "bubble.left.and.text.bubble.right")
+        return cell
+    }
+
+    override func tableView(_ tableView: UITableView, didSelectRowAt indexPath: IndexPath) {
+        tableView.deselectRow(at: indexPath, animated: true)
+        navigationController?.pushViewController(RetainedArchiveMessagesController(chat: chats[indexPath.row], strings: strings), animated: true)
+    }
+}
+
+private final class RetainedArchiveMessagesController: UITableViewController {
+    private let chat: RetainedArchiveChat
+    private let strings: [String: String]
+    init(chat: RetainedArchiveChat, strings: [String: String]) {
+        self.chat = chat
+        self.strings = strings
+        super.init(style: .insetGrouped)
+        title = archiveChatTitle(chat, strings: strings)
+    }
+    required init?(coder: NSCoder) { fatalError("init(coder:) is not supported") }
+    override func viewDidLoad() {
+        super.viewDidLoad()
+        tableView.rowHeight = UITableView.automaticDimension
+        tableView.estimatedRowHeight = 100
+    }
+    override func tableView(_ tableView: UITableView, numberOfRowsInSection section: Int) -> Int { chat.messages.count }
+    override func tableView(_ tableView: UITableView, cellForRowAt indexPath: IndexPath) -> UITableViewCell {
+        let cell = tableView.dequeueReusableCell(withIdentifier: "message") ?? UITableViewCell(style: .subtitle, reuseIdentifier: "message")
+        let message = chat.messages[indexPath.row]
+        cell.textLabel?.text = !message.available ? strings["unavailable"] :
+            (message.text.isEmpty ? (strings[message.kind] ?? strings["attachment"]) : message.text)
+        cell.textLabel?.numberOfLines = 4
+        cell.detailTextLabel?.text = archiveMetadata(message, strings: strings)
+        cell.detailTextLabel?.numberOfLines = 0
+        cell.accessoryType = .disclosureIndicator
+        return cell
+    }
+    override func tableView(_ tableView: UITableView, didSelectRowAt indexPath: IndexPath) {
+        tableView.deselectRow(at: indexPath, animated: true)
+        let message = chat.messages[indexPath.row]
+        let controller = UIViewController()
+        controller.title = "ID \(message.id)"
+        controller.view.backgroundColor = .systemBackground
+        let textView = UITextView()
+        textView.isEditable = false
+        textView.font = .preferredFont(forTextStyle: .body)
+        textView.textColor = .label
+        textView.backgroundColor = .systemBackground
+        let body = !message.available ? (strings["unavailable"] ?? "Unavailable") :
+            (message.text.isEmpty ? (strings[message.kind] ?? strings["attachment"] ?? "Message") : message.text)
+        textView.text = archiveMetadata(message, strings: strings) + "\n\n" + body
+        textView.translatesAutoresizingMaskIntoConstraints = false
+        controller.view.addSubview(textView)
+        NSLayoutConstraint.activate([
+            textView.topAnchor.constraint(equalTo: controller.view.safeAreaLayoutGuide.topAnchor),
+            textView.bottomAnchor.constraint(equalTo: controller.view.safeAreaLayoutGuide.bottomAnchor),
+            textView.leadingAnchor.constraint(equalTo: controller.view.leadingAnchor, constant: 12),
+            textView.trailingAnchor.constraint(equalTo: controller.view.trailingAnchor, constant: -12)
+        ])
+        navigationController?.pushViewController(controller, animated: true)
+    }
+}

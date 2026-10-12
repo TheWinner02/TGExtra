@@ -117,6 +117,30 @@
 "ENABLE_FAKE_LOCATION_SUBTITLE" = "Ti consente di falsificare la posizione GPS del dispositivo";
 "SELECT_FAKE_LOCATION_TITLE" = "Seleziona posizione";
 
+/* Archivio messaggi conservati */
+"RETAINED_ARCHIVE_TITLE" = "Messaggi eliminati conservati";
+"RETAINED_ARCHIVE_SUBTITLE" = "Consulta i messaggi conservati di questo account, divisi per chat.";
+"RETAINED_ARCHIVE_EMPTY" = "Nessun messaggio conservato registrato per questo account.";
+"RETAINED_ARCHIVE_LOADING" = "Lettura dei messaggi locali…";
+"RETAINED_ARCHIVE_ACCOUNT" = "Apri una chat dell'account da consultare, poi riapri TGExtra.";
+"RETAINED_ARCHIVE_UNKNOWN" = "Chat non identificate";
+"RETAINED_ARCHIVE_CHAT" = "Chat";
+"RETAINED_ARCHIVE_TOPIC" = "Topic";
+"RETAINED_ARCHIVE_COUNT" = "%ld messaggi conservati";
+"RETAINED_ARCHIVE_MISSING_COUNT" = "%ld non disponibili";
+"RETAINED_ARCHIVE_NOTE" = "Archivio locale di sola lettura. Gli allegati non vengono scaricati. I vecchi record senza account non possono essere elencati in sicurezza. Usa aggiorna per ricaricare.";
+"RETAINED_ARCHIVE_UNAVAILABLE" = "Record conservato, ma il messaggio non è leggibile nel database locale.";
+"RETAINED_ARCHIVE_TEXT" = "Messaggio";
+"RETAINED_ARCHIVE_PHOTO" = "Foto";
+"RETAINED_ARCHIVE_VIDEO" = "Video";
+"RETAINED_ARCHIVE_AUDIO" = "Audio / messaggio vocale";
+"RETAINED_ARCHIVE_FILE" = "File";
+"RETAINED_ARCHIVE_CONTACT" = "Contatto";
+"RETAINED_ARCHIVE_LOCATION" = "Posizione";
+"RETAINED_ARCHIVE_POLL" = "Sondaggio";
+"RETAINED_ARCHIVE_STICKER" = "Sticker";
+"RETAINED_ARCHIVE_ATTACHMENT" = "Allegato";
+
 /* Extras */
 "APPLY" = "Applica";
 "APPLY_CHANGES" = "Sei sicuro di voler applicare queste modifiche?";

@@ -237,6 +237,21 @@ private func retainedTransportMatches(_ lhs: AnyObject, _ rhs: AnyObject) -> Boo
     return leftContext === rightContext
 }
 
+// Each archive screen owns its read-only request; dismissal/refresh cancels it.
+final class RetainedArchiveLoad {
+    private var disposables: [Disposable] = []
+    private(set) var cancelled = false
+    func track(_ disposable: Disposable) {
+        if cancelled { disposable.dispose() } else { disposables.append(disposable) }
+    }
+    func cancel() {
+        cancelled = true
+        disposables.forEach { $0.dispose() }
+        disposables.removeAll()
+    }
+    deinit { disposables.forEach { $0.dispose() } }
+}
+
 @objc(TGExtraDeletedMessageCleaner)
 class TGExtraDeletedMessageCleaner: NSObject {
     private static let recordsKey = "TGExtraRetainedMessageRecords"
@@ -342,6 +357,141 @@ class TGExtraDeletedMessageCleaner: NSObject {
         let count = records.filter { ($0["account"] as? String) == path }.count
         let observed = (observedIds[path] ?? [:]).count
         return "Account aperto: \(count) messaggi registrati; \(observed) ID completi letti dalle chat. " + (readStatus[path] ?? "Nessuna cella acquisita.")
+    }
+
+    private static func archiveTitle(_ message: Any, fields: ReflectedId) -> String {
+        guard let storage = nativeStoredValue(named: "peers", in: message),
+              let peers = RetainedMessageArchive.dictionary(in: storage) else { return "" }
+        for child in Mirror(reflecting: peers).children {
+            let pair = Array(Mirror(reflecting: child.value).children)
+            guard pair.count == 2 else { continue }
+            let peer = pair[1].value
+            guard let peerId = nativeStoredValue(named: "id", in: peer),
+                  let nsValue = nativeStoredValue(named: "namespace", in: peerId),
+                  let idValue = nativeStoredValue(named: "id", in: peerId) else { continue }
+            let ns = (nsValue as? UInt32) ?? (nativeStoredValue(named: "rawValue", in: nsValue) as? UInt32)
+            let raw = (idValue as? Int64) ?? (nativeStoredValue(named: "rawValue", in: idValue) as? Int64)
+            guard let ns, ns <= 7, let raw, raw >= 0, UInt64(raw) < (UInt64(1) << 61) else { continue }
+            let bits = UInt64(raw)
+            let packed = (bits & 0xffffffff) | (UInt64(ns) << 32) | ((bits >> 32) << 35)
+            guard Int64(bitPattern: packed) == fields.peer else { continue }
+            if let title = nativeStoredValue(named: "title", in: peer) as? String, !title.isEmpty { return title }
+            let names = ["firstName", "lastName"].compactMap { nativeStoredValue(named: $0, in: peer) as? String }
+            return names.filter { !$0.isEmpty }.joined(separator: " ")
+        }
+        return ""
+    }
+
+    private static func archiveKind(_ message: Any) -> String {
+        guard let media = nativeStoredValue(named: "media", in: message) else { return "text" }
+        for child in Mirror(reflecting: media).children {
+            let name = String(reflecting: type(of: child.value))
+            if name.contains("TelegramMediaImage") { return "photo" }
+            if name.contains("TelegramMediaContact") { return "contact" }
+            if name.contains("TelegramMediaMap") { return "location" }
+            if name.contains("TelegramMediaPoll") { return "poll" }
+            if name.contains("TelegramMediaFile") {
+                if let attributes = nativeStoredValue(named: "attributes", in: child.value) {
+                    for attribute in Mirror(reflecting: attributes).children {
+                        let label = Mirror(reflecting: attribute.value).children.first?.label?.lowercased() ?? ""
+                        if label.contains("audio") { return "audio" }
+                        if label.contains("video") { return "video" }
+                        if label.contains("sticker") { return "sticker" }
+                    }
+                }
+                return "file"
+            }
+        }
+        return Mirror(reflecting: media).children.isEmpty ? "text" : "attachment"
+    }
+
+    static func loadArchive(_ ui: UIViewController,
+                            completion: @escaping ([RetainedArchiveChat]?, String?) -> Void) -> RetainedArchiveLoad {
+        precondition(Thread.isMainThread)
+        let load = RetainedArchiveLoad()
+        guard let path = objc_getAssociatedObject(ui, &uiAccountKey) as? String,
+              let account = retainedMessageAccounts().first(where: { $0.2 == path }) else {
+            completion(nil, "account"); return load
+        }
+        // Snapshot this account only. No persistence, media download or mutation.
+        let records = (UserDefaults.standard.array(forKey: recordsKey) as? [[String: Any]] ?? [])
+            .filter { ($0["account"] as? String) == path }.map { record -> [String: Any] in
+                var event = record
+                event.removeValue(forKey: "peer")
+                event.removeValue(forKey: "namespace")
+                return event
+            }
+        guard !records.isEmpty else { completion([], nil); return load }
+        let observed = Array((observedIds[path] ?? [:]).values)
+        let archiveIndex = RetainedMessageIndex(records: records)
+        let observedFields = observed.compactMap { id -> (MessageId, ReflectedId)? in
+            components(id).map { (id, $0) }
+        }
+        let observedById = Dictionary(grouping: observedFields, by: { $0.1.id })
+        let decoded = decodedChannelIds(records)
+        let transaction = account.1.transaction(userInteractive: true, ignoreDisabled: false, { transaction -> [MessageId] in
+            let globalIds = records.filter { ($0["channel"] as? NSNumber)?.int64Value == 0 }
+                .compactMap { ($0["id"] as? NSNumber)?.int32Value }
+            var ids = transaction.messageIdsForGlobalIds(globalIds) + decoded
+            for record in records {
+                guard let id = (record["id"] as? NSNumber)?.int32Value else { continue }
+                let candidates = (observedById[id] ?? []).filter { matches($0.1, record: record) }
+                if candidates.count == 1 { ids.append(candidates[0].0) }
+            }
+            var seen = Set<String>()
+            return ids.filter { id in
+                guard let fields = components(id), archiveIndex.contains(fields, account: path) else { return false }
+                return seen.insert(fields.key).inserted
+            }
+        }, file: #file, line: #line)
+        load.track(transaction.start(next: { ids in
+            DispatchQueue.main.async {
+                guard !load.cancelled else { return }
+                var found: [(ReflectedId, RetainedArchiveMessage)] = []
+                func finish() {
+                    var items = found.map { $0.1 }
+                    let foundById = Dictionary(grouping: found.map { $0.0 }, by: { $0.id })
+                    for record in records {
+                        guard let id = (record["id"] as? NSNumber)?.int32Value else { continue }
+                        if foundById[id]?.contains(where: { matches($0, record: record) }) == true { continue }
+                        let channel = (record["channel"] as? NSNumber)?.int64Value ?? 0
+                        let key = ReflectedId.channel(channel, message: id).map { String($0.peer) } ?? "unresolved"
+                        items.append(RetainedArchiveMessage(chatKey: key, chatTitle: "", id: id,
+                            timestamp: nil, text: "", kind: "unavailable", topic: nil, available: false))
+                    }
+                    load.cancel()
+                    completion(RetainedMessageArchive.grouped(items), nil)
+                }
+                // Small native batches; never keep complete media/message objects
+                // after extracting the transient archive display model.
+                func readBatch(_ offset: Int) {
+                    guard !load.cancelled else { return }
+                    guard offset < ids.count else { finish(); return }
+                    let end = min(offset + 200, ids.count)
+                    load.track(account.1.messagesAtIds(Array(ids[offset..<end])).start(next: { messages in
+                        DispatchQueue.main.async {
+                            guard !load.cancelled else { return }
+                            for message in messages {
+                                guard let id = messageIds(in: message).first,
+                                      let fields = components(id), archiveIndex.contains(fields, account: path) else { continue }
+                                let text = nativeStoredValue(named: "text", in: message) as? String ?? ""
+                                let timestamp = nativeStoredValue(named: "timestamp", in: message) as? Int32
+                                let topic = nativeStoredValue(named: "threadId", in: message) as? Int64
+                                let topicTitle = nativeStoredValue(named: "associatedThreadInfo", in: message)
+                                    .flatMap { nativeStoredValue(named: "title", in: $0) as? String }
+                                found.append((fields, RetainedArchiveMessage(chatKey: String(fields.peer),
+                                    chatTitle: archiveTitle(message, fields: fields), id: fields.id,
+                                    timestamp: timestamp, text: text, kind: archiveKind(message), topic: topic, available: true,
+                                    topicTitle: topicTitle)))
+                            }
+                            readBatch(end)
+                        }
+                    }, error: nil, completed: nil))
+                }
+                readBatch(0)
+            }
+        }, error: nil, completed: nil))
+        return load
     }
 
     @objc(registerNode:)
