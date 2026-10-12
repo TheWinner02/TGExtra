@@ -26,13 +26,28 @@ jobs:
       - name: Fetch TGExtra.bundle
         uses: actions/checkout@v7
 
-      - name: Set up Theos
-        uses: waruhachi/theos-action@v2.4.6
+      - name: Fetch Theos
+        uses: actions/checkout@v7
         with:
-          theos-src: 'waruhachi/theos'
-          theos-branch: 'main'
-          sdks-src: 'waruhachi/sdks'
-          sdks-branch: 'main'
+          repository: waruhachi/theos
+          ref: main
+          submodules: recursive
+          path: theos
+
+      - name: Fetch patched SDKs
+        uses: actions/checkout@v7
+        with:
+          repository: waruhachi/sdks
+          ref: main
+          submodules: recursive
+          path: theos/sdks
+
+      - name: Configure Theos
+        shell: bash
+        run: |
+          brew install make ldid
+          echo "THEOS=$GITHUB_WORKSPACE/theos" >> "$GITHUB_ENV"
+          echo "$(brew --prefix make)/libexec/gnubin" >> "$GITHUB_PATH"
 
       - name: Build TGExtra from selected branch
         shell: bash
