@@ -9,6 +9,9 @@
 @interface TGExtra ()
 @property (nonatomic, strong) UITableView *tableView;
 @property (nonatomic, strong) NSString *cacheSize;
+@property (nonatomic, strong) UIImageView *headerIconView;
+@property (nonatomic, strong) UIImage *fallbackHeaderImage;
+@property (nonatomic) NSUInteger headerImageGeneration;
 @end
 
 @implementation TGExtra
@@ -32,6 +35,23 @@
 
 - (void)didChangeLanguage {
     [self.tableView reloadData];
+}
+
+- (void)viewWillAppear:(BOOL)animated {
+    [super viewWillAppear:animated];
+    NSUInteger generation = ++self.headerImageGeneration;
+    self.headerIconView.image = self.fallbackHeaderImage;
+    __weak TGExtra *weakSelf = self;
+    [TGExtraDeletedMessageCleaner loadAccountAvatarForUI:self completion:^(UIImage *image) {
+        TGExtra *strongSelf = weakSelf;
+        if (!strongSelf || strongSelf.headerImageGeneration != generation) return;
+        strongSelf.headerIconView.image = image ?: strongSelf.fallbackHeaderImage;
+    }];
+}
+
+- (void)viewWillDisappear:(BOOL)animated {
+    [super viewWillDisappear:animated];
+    ++self.headerImageGeneration;
 }
 
 - (void)didChangeFakeLocation {
@@ -97,6 +117,8 @@
     // Logo Image
 	NSData *imageData = [[NSData alloc] initWithBase64EncodedString:TW02PNG options:NSDataBase64DecodingIgnoreUnknownCharacters];
     UIImageView *iconView = [[UIImageView alloc] initWithImage:[UIImage imageWithData:imageData]];
+    self.headerIconView = iconView;
+    self.fallbackHeaderImage = iconView.image;
     iconView.translatesAutoresizingMaskIntoConstraints = NO;
     iconView.layer.cornerRadius = 100 / 4;
 	iconView.userInteractionEnabled = YES;

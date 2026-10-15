@@ -71,6 +71,12 @@ jobs:
                 swiftc -parse-as-library -I "$fixture/stub" scripts/test-disposable-abi.swift -L "$fixture/native" -lSwiftSignalKit -Xlinker -rpath -Xlinker "$fixture/native" -o "$fixture/test"
                 "$fixture/test"
 
+            - name: Test account avatar identity and fallback
+              shell: bash
+              run: |
+                swiftc Sources/tgapi/AccountAvatarPolicy.swift scripts/test-account-avatar.swift -o "$RUNNER_TEMP/tgextra-avatar-tests"
+                "$RUNNER_TEMP/tgextra-avatar-tests"
+
             - name: Fetch Theos
               uses: actions/checkout@v7
               with:

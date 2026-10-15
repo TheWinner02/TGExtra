@@ -1,6 +1,7 @@
 import Foundation
 import Darwin
 import UIKit
+import ImageIO
 import ObjectiveC
 import Postbox
 import SwiftSignalKit
@@ -357,6 +358,72 @@ class TGExtraDeletedMessageCleaner: NSObject {
         let count = records.filter { ($0["account"] as? String) == path }.count
         let observed = (observedIds[path] ?? [:]).count
         return "Account aperto: \(count) messaggi registrati; \(observed) ID completi letti dalle chat. " + (readStatus[path] ?? "Nessuna cella acquisita.")
+    }
+
+    @objc(loadAccountAvatarForUI:completion:)
+    static func loadAccountAvatar(_ ui: UIViewController, completion: @escaping (UIImage?) -> Void) {
+        precondition(Thread.isMainThread)
+        guard let path = objc_getAssociatedObject(ui, &uiAccountKey) as? String,
+              let account = retainedMessageAccounts().first(where: { $0.2 == path }),
+              let peer = nativeStoredValue(named: "peerId", in: account.0),
+              let ownPeer = AccountAvatarPolicy.peerKey(peer),
+              let mediaBox = nativeStoredValue(named: "mediaBox", in: account.1),
+              let basePath = nativeStoredValue(named: "basePath", in: mediaBox) as? String else {
+            completion(nil); return
+        }
+        // Inspect already-loaded views only, once when the menu opens. No avatar
+        // hooks, no global account image cache, and no arbitrary chat screenshots.
+        var pending = nativeApplicationWindows().filter { !$0.isHidden }.map { $0 as UIView }
+        var controllers = nativeAllVisibleControllers()
+        var seenControllers = Set<ObjectIdentifier>()
+        while let controller = controllers.popLast(), seenControllers.count < 200 {
+            guard seenControllers.insert(ObjectIdentifier(controller)).inserted else { continue }
+            if let view = controller.viewIfLoaded { pending.append(view) }
+            controllers.append(contentsOf: controller.children)
+            if let tabs = controller as? UITabBarController { controllers.append(contentsOf: tabs.viewControllers ?? []) }
+            if let nav = controller as? UINavigationController { controllers.append(contentsOf: nav.viewControllers) }
+        }
+        let selector = NSSelectorFromString("asyncdisplaykit_node")
+        var seen = Set<ObjectIdentifier>()
+        var resources: [String] = []
+        while let view = pending.popLast(), seen.count < 4000 {
+            guard seen.insert(ObjectIdentifier(view)).inserted else { continue }
+            pending.append(contentsOf: view.subviews)
+            guard view.responds(to: selector),
+                  let node = view.perform(selector)?.takeUnretainedValue(),
+                  String(reflecting: type(of: node)).contains("AvatarNode"),
+                  let id = AccountAvatarPolicy.resourceId(in: node, accountPeer: ownPeer),
+                  !resources.contains(id) else { continue }
+            resources.append(id)
+        }
+        guard !resources.isEmpty else { completion(nil); return }
+        let resourceIds = resources
+        DispatchQueue.global(qos: .utility).async {
+            let directory = URL(fileURLWithPath: basePath, isDirectory: true).resolvingSymlinksInPath()
+            var image: UIImage?
+            for id in resourceIds {
+                let file = directory.appendingPathComponent(id).resolvingSymlinksInPath()
+                guard file.deletingLastPathComponent().path == directory.path,
+                      let attributes = try? FileManager.default.attributesOfItem(atPath: file.path),
+                      let size = attributes[.size] as? NSNumber, size.intValue > 0, size.intValue <= 4 * 1024 * 1024,
+                      let source = CGImageSourceCreateWithURL(file as CFURL, nil) else { continue }
+                let options: [String: Any] = [
+                    kCGImageSourceCreateThumbnailFromImageAlways as String: true,
+                    kCGImageSourceCreateThumbnailWithTransform as String: true,
+                    kCGImageSourceThumbnailMaxPixelSize as String: 400,
+                    kCGImageSourceShouldCacheImmediately as String: true
+                ]
+                if let thumbnail = CGImageSourceCreateThumbnailAtIndex(source, 0, options as CFDictionary) {
+                    image = UIImage(cgImage: thumbnail)
+                    break
+                }
+            }
+            let result = image
+            DispatchQueue.main.async { [weak ui] in
+                guard let ui, objc_getAssociatedObject(ui, &uiAccountKey) as? String == path else { return }
+                completion(result)
+            }
+        }
     }
 
     private static func archiveTitle(_ message: Any, fields: ReflectedId) -> String {
