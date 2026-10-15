@@ -19,6 +19,23 @@ struct RetainedArchiveChat {
 }
 
 enum RetainedMessageArchive {
+    // View-only filtering: never remove unresolved records from the registry.
+    static func visibleChats(_ chats: [RetainedArchiveChat], showRecordsWithoutContent: Bool = false) -> [RetainedArchiveChat] {
+        chats.enumerated().compactMap { offset, chat -> (Int, RetainedArchiveChat)? in
+            let messages = chat.messages.filter { showRecordsWithoutContent || $0.available }.sorted {
+                if $0.available != $1.available { return $0.available }
+                if ($0.timestamp ?? 0) != ($1.timestamp ?? 0) { return ($0.timestamp ?? 0) > ($1.timestamp ?? 0) }
+                return $0.id > $1.id
+            }
+            guard !messages.isEmpty else { return nil }
+            return (offset, RetainedArchiveChat(key: chat.key, title: chat.title, messages: messages))
+        }.sorted {
+            let left = $0.1.messages.contains { $0.available }
+            let right = $1.1.messages.contains { $0.available }
+            return left == right ? $0.0 < $1.0 : left
+        }.map { $0.1 }
+    }
+
     // SimpleDictionary can store entries as a flat tuple array rather than a
     // native Dictionary. Walk storage only; stop at identifiable peer values.
     static func peerValues(in storage: Any) -> [Any] {

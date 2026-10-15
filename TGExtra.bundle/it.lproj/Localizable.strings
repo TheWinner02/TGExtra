@@ -126,8 +126,14 @@
 "RETAINED_ARCHIVE_UNKNOWN" = "Chat non identificate";
 "RETAINED_ARCHIVE_CHAT" = "Chat";
 "RETAINED_ARCHIVE_TOPIC" = "Topic";
-"RETAINED_ARCHIVE_COUNT" = "%ld messaggi conservati";
-"RETAINED_ARCHIVE_MISSING_COUNT" = "%ld non disponibili";
+"RETAINED_ARCHIVE_COUNT" = "%ld messaggi consultabili";
+"RETAINED_ARCHIVE_COUNT_ONE" = "%ld messaggio consultabile";
+"RETAINED_ARCHIVE_MISSING_COUNT" = "%ld record senza contenuto";
+"RETAINED_ARCHIVE_MISSING_COUNT_ONE" = "%ld record senza contenuto";
+"RETAINED_ARCHIVE_SHOW_RECORDS" = "Mostra record senza contenuto";
+"RETAINED_ARCHIVE_NO_READABLE" = "Nessun messaggio consultabile. Attiva l'opzione per mostrare i record senza contenuto.";
+"RETAINED_ARCHIVE_HIDDEN" = "%ld record senza contenuto nascosti. Nessun dato è stato cancellato.";
+"RETAINED_ARCHIVE_REGISTRY_ONLY" = "Solo registro";
 "RETAINED_ARCHIVE_NOTE" = "Archivio locale di sola lettura. Gli allegati non vengono scaricati. I vecchi record senza account non possono essere elencati in sicurezza. Usa aggiorna per ricaricare.";
 "RETAINED_ARCHIVE_UNAVAILABLE" = "Record conservato, ma il messaggio non è leggibile nel database locale.";
 "RETAINED_ARCHIVE_TEXT" = "Messaggio";

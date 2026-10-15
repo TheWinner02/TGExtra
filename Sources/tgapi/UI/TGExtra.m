@@ -650,7 +650,10 @@ typedef NS_ENUM(NSInteger, TABLE_VIEW_SECTIONS) {
 			@"audio": @"RETAINED_ARCHIVE_AUDIO", @"file": @"RETAINED_ARCHIVE_FILE",
 			@"contact": @"RETAINED_ARCHIVE_CONTACT", @"location": @"RETAINED_ARCHIVE_LOCATION",
 			@"poll": @"RETAINED_ARCHIVE_POLL", @"sticker": @"RETAINED_ARCHIVE_STICKER",
-			@"attachment": @"RETAINED_ARCHIVE_ATTACHMENT"};
+			@"attachment": @"RETAINED_ARCHIVE_ATTACHMENT", @"showRecords": @"RETAINED_ARCHIVE_SHOW_RECORDS",
+			@"noReadable": @"RETAINED_ARCHIVE_NO_READABLE", @"hidden": @"RETAINED_ARCHIVE_HIDDEN",
+			@"registryOnly": @"RETAINED_ARCHIVE_REGISTRY_ONLY", @"countOne": @"RETAINED_ARCHIVE_COUNT_ONE",
+			@"missingCountOne": @"RETAINED_ARCHIVE_MISSING_COUNT_ONE"};
 		for (NSString *key in keys) strings[key] = TGLoc(keys[key]);
 		[TGExtraRetainedArchiveController presentFromUI:self strings:strings];
 		return;

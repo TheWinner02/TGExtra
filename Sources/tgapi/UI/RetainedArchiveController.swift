@@ -15,7 +15,7 @@ private func archiveMetadata(_ message: RetainedArchiveMessage, strings: [String
         let label = message.topicTitle.flatMap { $0.isEmpty ? nil : $0 } ?? "#\(topic)"
         parts.append("\(strings["topic"] ?? "Topic"): \(label)")
     }
-    if message.kind != "text" { parts.append(strings[message.kind] ?? strings["attachment"] ?? "Attachment") }
+    if message.available && message.kind != "text" { parts.append(strings[message.kind] ?? strings["attachment"] ?? "Attachment") }
     return parts.joined(separator: " · ")
 }
 
@@ -24,6 +24,9 @@ final class TGExtraRetainedArchiveController: UITableViewController {
     private weak var sourceUI: UIViewController?
     private var strings: [String: String] = [:]
     private var chats: [RetainedArchiveChat] = []
+    private var allChats: [RetainedArchiveChat] = []
+    private var showRecordsWithoutContent = false
+    private var loadError = false
     private var request: RetainedArchiveLoad?
     private var loading = false
 
@@ -64,41 +67,81 @@ final class TGExtraRetainedArchiveController: UITableViewController {
     @objc private func reloadArchive() {
         request?.cancel()
         chats = []
+        allChats = []
+        loadError = false
         loading = true
         tableView.reloadData()
         showBackground(strings["loading"] ?? "Loading…")
         navigationItem.rightBarButtonItem?.isEnabled = false
         guard let ui = sourceUI else {
             loading = false
-            showBackground(strings["account"] ?? "Open a chat and try again.")
+            loadError = true
+            navigationItem.rightBarButtonItem?.isEnabled = true
+            applyFilter()
             return
         }
         request = TGExtraDeletedMessageCleaner.loadArchive(ui) { [weak self] result, error in
             guard let self else { return }
             self.loading = false
             self.navigationItem.rightBarButtonItem?.isEnabled = true
-            self.chats = result ?? []
-            if error != nil { self.showBackground(self.strings["account"] ?? "Open a chat and try again.") }
-            else if self.chats.isEmpty { self.showBackground(self.strings["empty"] ?? "No retained messages for this account.") }
-            else { self.tableView.backgroundView = nil }
-            self.tableView.reloadData()
+            self.allChats = result ?? []
+            self.loadError = error != nil
+            self.applyFilter()
         }
     }
 
-    override func tableView(_ tableView: UITableView, numberOfRowsInSection section: Int) -> Int { chats.count }
+    private func applyFilter() {
+        chats = RetainedMessageArchive.visibleChats(allChats, showRecordsWithoutContent: showRecordsWithoutContent)
+        if loadError { showBackground(strings["account"] ?? "Open a chat and try again.") }
+        else if allChats.isEmpty { showBackground(strings["empty"] ?? "No retained messages for this account.") }
+        else if chats.isEmpty { showBackground(strings["noReadable"] ?? "No readable messages. Enable the filter to show records without content.") }
+        else { tableView.backgroundView = nil }
+        tableView.reloadData()
+    }
+
+    @objc private func filterChanged(_ sender: UISwitch) {
+        showRecordsWithoutContent = sender.isOn
+        if !loading { applyFilter() }
+    }
+
+    override func numberOfSections(in tableView: UITableView) -> Int { 2 }
+
+    override func tableView(_ tableView: UITableView, numberOfRowsInSection section: Int) -> Int {
+        section == 0 ? 1 : chats.count
+    }
 
     override func tableView(_ tableView: UITableView, titleForFooterInSection section: Int) -> String? {
-        loading ? nil : strings["note"]
+        guard !loading else { return nil }
+        if section == 0 {
+            let hidden = allChats.reduce(0) { $0 + $1.messages.filter { !$0.available }.count }
+            return !showRecordsWithoutContent && hidden > 0
+                ? String(format: strings["hidden"] ?? "%ld records hidden; nothing has been deleted.", hidden) : nil
+        }
+        return strings["note"]
     }
 
     override func tableView(_ tableView: UITableView, cellForRowAt indexPath: IndexPath) -> UITableViewCell {
+        if indexPath.section == 0 {
+            let cell = UITableViewCell(style: .default, reuseIdentifier: nil)
+            cell.textLabel?.text = strings["showRecords"] ?? "Show records without content"
+            cell.textLabel?.numberOfLines = 0
+            cell.selectionStyle = .none
+            let toggle = UISwitch()
+            toggle.isOn = showRecordsWithoutContent
+            toggle.isEnabled = !loading
+            toggle.addTarget(self, action: #selector(filterChanged(_:)), for: .valueChanged)
+            cell.accessoryView = toggle
+            return cell
+        }
         let cell = tableView.dequeueReusableCell(withIdentifier: "chat") ?? UITableViewCell(style: .subtitle, reuseIdentifier: "chat")
         let chat = chats[indexPath.row]
         cell.textLabel?.text = archiveChatTitle(chat, strings: strings)
         let missing = chat.messages.filter { !$0.available }.count
-        var subtitle = String(format: strings["count"] ?? "%ld retained messages", chat.messages.count)
-        if missing > 0 { subtitle += " · " + String(format: strings["missingCount"] ?? "%ld unavailable", missing) }
-        cell.detailTextLabel?.text = subtitle
+        let readable = chat.messages.count - missing
+        var counts: [String] = []
+        if readable > 0 { counts.append(String(format: strings[readable == 1 ? "countOne" : "count"] ?? "%ld readable messages", readable)) }
+        if missing > 0 { counts.append(String(format: strings[missing == 1 ? "missingCountOne" : "missingCount"] ?? "%ld records without content", missing)) }
+        cell.detailTextLabel?.text = counts.joined(separator: " · ")
         cell.textLabel?.numberOfLines = 0
         cell.detailTextLabel?.numberOfLines = 0
         cell.accessoryType = .disclosureIndicator
@@ -108,6 +151,7 @@ final class TGExtraRetainedArchiveController: UITableViewController {
 
     override func tableView(_ tableView: UITableView, didSelectRowAt indexPath: IndexPath) {
         tableView.deselectRow(at: indexPath, animated: true)
+        guard indexPath.section == 1 else { return }
         navigationController?.pushViewController(RetainedArchiveMessagesController(chat: chats[indexPath.row], strings: strings), animated: true)
     }
 }
@@ -131,7 +175,7 @@ private final class RetainedArchiveMessagesController: UITableViewController {
     override func tableView(_ tableView: UITableView, cellForRowAt indexPath: IndexPath) -> UITableViewCell {
         let cell = tableView.dequeueReusableCell(withIdentifier: "message") ?? UITableViewCell(style: .subtitle, reuseIdentifier: "message")
         let message = chat.messages[indexPath.row]
-        cell.textLabel?.text = !message.available ? strings["unavailable"] :
+        cell.textLabel?.text = !message.available ? (strings["registryOnly"] ?? "Record only") :
             (message.text.isEmpty ? (strings[message.kind] ?? strings["attachment"]) : message.text)
         cell.textLabel?.numberOfLines = 4
         cell.detailTextLabel?.text = archiveMetadata(message, strings: strings)
