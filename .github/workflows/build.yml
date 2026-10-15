@@ -68,7 +68,7 @@ jobs:
                 swiftc -module-name SwiftSignalKit -emit-library -emit-module scripts/disposable-abi-fixture.swift -emit-module-path "$fixture/native/SwiftSignalKit.swiftmodule" -o "$fixture/native/libSwiftSignalKit.dylib"
                 target="$(uname -m)-apple-macosx14.0"
                 sed "s/arm64-apple-ios14.0/$target/g" Sources/SwiftStubs/SwiftSignalKit.swiftmodule/arm64-apple-ios.swiftinterface > "$fixture/stub/SwiftSignalKit.swiftinterface"
-                swiftc -I "$fixture/stub" scripts/test-disposable-abi.swift -L "$fixture/native" -lSwiftSignalKit -Xlinker -rpath -Xlinker "$fixture/native" -o "$fixture/test"
+                swiftc -parse-as-library -I "$fixture/stub" scripts/test-disposable-abi.swift -L "$fixture/native" -lSwiftSignalKit -Xlinker -rpath -Xlinker "$fixture/native" -o "$fixture/test"
                 "$fixture/test"
 
             - name: Fetch Theos
