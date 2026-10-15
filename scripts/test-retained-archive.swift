@@ -25,6 +25,23 @@ struct RetainedArchiveTests {
         struct WrappedDictionary { let storage: [Int: String] }
         precondition(RetainedMessageArchive.dictionary(in: WrappedDictionary(storage: [1: "Chat"])) as? [Int: String] == [1: "Chat"])
         precondition(RetainedMessageArchive.dictionary(in: "not a dictionary") == nil)
+        struct FakePeer { let id: Int; let title: String }
+        struct FlatPeers { let entries: [(Int, FakePeer)] }
+        let peer = FakePeer(id: 123, title: "Group name")
+        let flat = RetainedMessageArchive.peerValues(in: FlatPeers(entries: [(123, peer)]))
+        precondition(flat.compactMap { $0 as? FakePeer }.first?.title == "Group name")
+        let native = RetainedMessageArchive.peerValues(in: [123: peer])
+        precondition(native.compactMap { $0 as? FakePeer }.first?.id == 123)
+        let wrapped = RetainedMessageArchive.peerValues(in: Optional(FlatPeers(entries: [(123, peer)])))
+        precondition(wrapped.compactMap { $0 as? FakePeer }.count == 1)
+        precondition(RetainedMessageArchive.peerValues(in: "empty").isEmpty)
+        let channelKey = String(RetainedMessageIdentity.channel(1207516682, message: 1)!.peer)
+        let named = RetainedArchiveChat(key: channelKey, title: "Example group", messages: [])
+        precondition(RetainedMessageArchive.displayTitle(named, chatLabel: "Chat", unknownLabel: "Unknown") == "Example group (ID 1207516682)")
+        let unnamed = RetainedArchiveChat(key: channelKey, title: "  ", messages: [])
+        precondition(RetainedMessageArchive.displayTitle(unnamed, chatLabel: "Chat", unknownLabel: "Unknown") == "Chat 1207516682")
+        let unknown = RetainedArchiveChat(key: "unresolved", title: "", messages: [])
+        precondition(RetainedMessageArchive.displayTitle(unknown, chatLabel: "Chat", unknownLabel: "Unknown") == "Unknown")
         let many = (1...10_000).map { item(String($0 % 100), "Chat", Int32($0), Int32($0)) }
         let large = RetainedMessageArchive.grouped(many)
         precondition(large.count == 100)

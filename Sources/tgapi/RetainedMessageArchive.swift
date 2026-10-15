@@ -19,6 +19,32 @@ struct RetainedArchiveChat {
 }
 
 enum RetainedMessageArchive {
+    // SimpleDictionary can store entries as a flat tuple array rather than a
+    // native Dictionary. Walk storage only; stop at identifiable peer values.
+    static func peerValues(in storage: Any) -> [Any] {
+        var budget = 4096
+        func visit(_ value: Any, depth: Int) -> [Any] {
+            guard depth <= 8, budget > 0 else { return [] }
+            budget -= 1
+            let mirror = Mirror(reflecting: value)
+            var current: Mirror? = mirror
+            while let fields = current {
+                if fields.children.contains(where: { $0.label == "id" }) { return [value] }
+                current = fields.superclassMirror
+            }
+            return mirror.children.prefix(512).flatMap { visit($0.value, depth: depth + 1) }
+        }
+        return visit(storage, depth: 0)
+    }
+
+    static func displayTitle(_ chat: RetainedArchiveChat, chatLabel: String, unknownLabel: String) -> String {
+        guard let packed = Int64(chat.key) else { return unknownLabel }
+        let bits = UInt64(bitPattern: packed)
+        let raw = (bits & 0xffffffff) | ((bits >> 35) << 32)
+        let title = chat.title.trimmingCharacters(in: .whitespacesAndNewlines)
+        return title.isEmpty ? "\(chatLabel) \(raw)" : "\(title) (ID \(raw))"
+    }
+
     // Postbox may wrap a Swift Dictionary in SimpleDictionary storage.
     static func dictionary(in value: Any, depth: Int = 0) -> Any? {
         let mirror = Mirror(reflecting: value)

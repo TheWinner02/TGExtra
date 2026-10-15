@@ -360,12 +360,8 @@ class TGExtraDeletedMessageCleaner: NSObject {
     }
 
     private static func archiveTitle(_ message: Any, fields: ReflectedId) -> String {
-        guard let storage = nativeStoredValue(named: "peers", in: message),
-              let peers = RetainedMessageArchive.dictionary(in: storage) else { return "" }
-        for child in Mirror(reflecting: peers).children {
-            let pair = Array(Mirror(reflecting: child.value).children)
-            guard pair.count == 2 else { continue }
-            let peer = pair[1].value
+        guard let storage = nativeStoredValue(named: "peers", in: message) else { return "" }
+        for peer in RetainedMessageArchive.peerValues(in: storage) {
             guard let peerId = nativeStoredValue(named: "id", in: peer),
                   let nsValue = nativeStoredValue(named: "namespace", in: peerId),
                   let idValue = nativeStoredValue(named: "id", in: peerId) else { continue }

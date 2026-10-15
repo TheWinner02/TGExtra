@@ -57,7 +57,7 @@ jobs:
             - name: Test retained archive grouping
               shell: bash
               run: |
-                swiftc Sources/tgapi/RetainedMessageArchive.swift scripts/test-retained-archive.swift -o "$RUNNER_TEMP/tgextra-archive-tests"
+                swiftc Sources/tgapi/RetainedMessageIdentity.swift Sources/tgapi/RetainedMessageArchive.swift scripts/test-retained-archive.swift -o "$RUNNER_TEMP/tgextra-archive-tests"
                 "$RUNNER_TEMP/tgextra-archive-tests"
 
             - name: Test SwiftSignalKit disposable ABI

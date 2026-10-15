@@ -1,11 +1,8 @@
 import UIKit
 
 private func archiveChatTitle(_ chat: RetainedArchiveChat, strings: [String: String]) -> String {
-    if !chat.title.isEmpty { return chat.title }
-    guard let packed = Int64(chat.key) else { return strings["unknown"] ?? "Unidentified chats" }
-    let bits = UInt64(bitPattern: packed)
-    let raw = (bits & 0xffffffff) | ((bits >> 35) << 32)
-    return "\(strings["chat"] ?? "Chat") \(raw)"
+    RetainedMessageArchive.displayTitle(chat, chatLabel: strings["chat"] ?? "Chat",
+        unknownLabel: strings["unknown"] ?? "Unidentified chats")
 }
 
 private func archiveMetadata(_ message: RetainedArchiveMessage, strings: [String: String]) -> String {
