@@ -132,6 +132,13 @@
 "RETAINED_ARCHIVE_NO_READABLE" = "No readable messages. Enable the option to show records without content.";
 "RETAINED_ARCHIVE_HIDDEN" = "%ld records without content hidden. Nothing has been deleted.";
 "RETAINED_ARCHIVE_REGISTRY_ONLY" = "Record only";
+"RETAINED_ARCHIVE_CLEAN_CHAT" = "Clear retained messages in this chat";
+"RETAINED_ARCHIVE_CLEAN_CONFIRM" = "Remove the retained messages registered for %@ from this device? Only this chat and account are affected, including all topics. Records that cannot be found will be kept.";
+"RETAINED_ARCHIVE_CLEAN_RESULT" = "%ld messages removed from this chat's local database.";
+"RETAINED_ARCHIVE_CLEAN_REMAINING" = "%ld records could not be removed: registry entries and markers were kept.";
+"RETAINED_ARCHIVE_CLEAN_FAILED" = "Cleanup could not run. Open a chat in this account and retry, making sure another cleanup is not already running.";
+"RETAINED_ARCHIVE_CLEAN_UNKNOWN" = "Cleanup disabled: these records do not safely identify a chat.";
+"RETAINED_ARCHIVE_CLEAN_EMPTY" = "No messages to display with the current filter.";
 "RETAINED_ARCHIVE_NOTE" = "Read-only local archive. Attachments are not downloaded. Older records without an account cannot be listed safely. Use refresh to reload.";
 "RETAINED_ARCHIVE_UNAVAILABLE" = "Record retained, but the message could not be read from the local database.";
 "RETAINED_ARCHIVE_TEXT" = "Message";

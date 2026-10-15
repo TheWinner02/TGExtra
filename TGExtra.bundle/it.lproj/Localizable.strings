@@ -134,6 +134,13 @@
 "RETAINED_ARCHIVE_NO_READABLE" = "Nessun messaggio consultabile. Attiva l'opzione per mostrare i record senza contenuto.";
 "RETAINED_ARCHIVE_HIDDEN" = "%ld record senza contenuto nascosti. Nessun dato è stato cancellato.";
 "RETAINED_ARCHIVE_REGISTRY_ONLY" = "Solo registro";
+"RETAINED_ARCHIVE_CLEAN_CHAT" = "Cancella conservati di questa chat";
+"RETAINED_ARCHIVE_CLEAN_CONFIRM" = "Rimuovere da questo dispositivo i messaggi conservati registrati per %@? L'operazione riguarda solo questa chat e questo account, inclusi tutti i topic. I record non reperibili verranno mantenuti.";
+"RETAINED_ARCHIVE_CLEAN_RESULT" = "Rimossi %ld messaggi dal database locale di questa chat.";
+"RETAINED_ARCHIVE_CLEAN_REMAINING" = "%ld record non sono stati rimossi: registro e contrassegni conservati.";
+"RETAINED_ARCHIVE_CLEAN_FAILED" = "Pulizia non eseguita. Apri una chat di questo account e riprova, assicurandoti che non sia già in corso un'altra pulizia.";
+"RETAINED_ARCHIVE_CLEAN_UNKNOWN" = "Pulizia disabilitata: questi record non identificano una chat in sicurezza.";
+"RETAINED_ARCHIVE_CLEAN_EMPTY" = "Nessun messaggio da visualizzare con il filtro attuale.";
 "RETAINED_ARCHIVE_NOTE" = "Archivio locale di sola lettura. Gli allegati non vengono scaricati. I vecchi record senza account non possono essere elencati in sicurezza. Usa aggiorna per ricaricare.";
 "RETAINED_ARCHIVE_UNAVAILABLE" = "Record conservato, ma il messaggio non è leggibile nel database locale.";
 "RETAINED_ARCHIVE_TEXT" = "Messaggio";

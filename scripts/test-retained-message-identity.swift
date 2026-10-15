@@ -58,6 +58,32 @@ struct RetainedMessageIdentityTests {
             precondition(index.contains(first, account: "account-A"))
             precondition(!index.contains(second, account: "account-A"))
         }
-        print("Retained-message identity and in-memory index: all checks passed")
+        let scope = RetainedChatCleanupScope(chatKey: String(first.peer), messageIds: [42])!
+        precondition(scope.contains(first))
+        precondition(!scope.contains(second), "Same raw ID in another chat must not be deleted")
+        precondition(!scope.contains(RetainedMessageIdentity(peer: first.peer, namespace: 1, id: 42)))
+        precondition(!scope.contains(RetainedMessageIdentity(peer: first.peer, namespace: 0, id: 43)), "Later messages are outside the confirmed snapshot")
+        var scopedRecord = record
+        scopedRecord["account"] = "account-A"
+        precondition(scope.selects(scopedRecord, account: "account-A"))
+        precondition(!scope.selects(scopedRecord, account: "account-B"))
+        precondition(!scope.selects(["channel": NSNumber(value: 100), "id": NSNumber(value: 42)], account: "account-A"), "Unscoped legacy records must remain untouched")
+        precondition(!scope.selects(["account": "account-A", "channel": NSNumber(value: 100), "id": NSNumber(value: 43)], account: "account-A"))
+        scopedRecord["channel"] = NSNumber(value: 200)
+        precondition(!scope.selects(scopedRecord, account: "account-A"))
+        scopedRecord["peer"] = NSNumber(value: first.peer)
+        scopedRecord["namespace"] = NSNumber(value: 0)
+        precondition(!scope.selects(scopedRecord, account: "account-A"), "Stale derived peer metadata must not override the original channel")
+        precondition(RetainedChatCleanupScope(chatKey: "unresolved", messageIds: [42]) == nil)
+        precondition(RetainedChatCleanupScope(chatKey: "0", messageIds: [42]) == nil)
+        precondition(RetainedChatCleanupScope(chatKey: String((Int64(3) << 32) | 100), messageIds: [42]) == nil)
+        precondition(RetainedChatCleanupScope(chatKey: String(first.peer), messageIds: []) == nil)
+        precondition(RetainedChatCleanupScope(chatKey: String(first.peer), messageIds: [-1, 0]) == nil)
+        let basic = RetainedMessageIdentity(peer: (Int64(1) << 32) | 100, namespace: 0, id: 42)
+        let basicScope = RetainedChatCleanupScope(chatKey: String(basic.peer), messageIds: [42])!
+        precondition(basicScope.contains(basic))
+        precondition(!basicScope.contains(RetainedMessageIdentity(peer: 100, namespace: 0, id: 42)), "User and basic group namespaces must remain separate")
+        precondition(basicScope.selects(["account": "account-A", "channel": NSNumber(value: 0), "id": NSNumber(value: 42)], account: "account-A"))
+        print("Retained-message identity, cleanup scope and in-memory index: all checks passed")
     }
 }

@@ -569,6 +569,16 @@ class TGExtraDeletedMessageCleaner: NSObject {
 
     @objc(clearForUI:completion:)
     static func clear(_ ui: UIViewController, completion: @escaping (Int, Int, String?) -> Void) {
+        clear(ui, scope: nil, completion: completion)
+    }
+
+    static func clearChat(_ ui: UIViewController, scope: RetainedChatCleanupScope,
+                          completion: @escaping (Int, Int, String?) -> Void) {
+        clear(ui, scope: scope, completion: completion)
+    }
+
+    private static func clear(_ ui: UIViewController, scope: RetainedChatCleanupScope?,
+                              completion: @escaping (Int, Int, String?) -> Void) {
         precondition(Thread.isMainThread)
         guard !clearing else { completion(0, 0, "Pulizia già in corso."); return }
         guard let path = objc_getAssociatedObject(ui, &uiAccountKey) as? String,
@@ -577,11 +587,15 @@ class TGExtraDeletedMessageCleaner: NSObject {
         }
         enrichRecords(path: path)
         let allRecords = UserDefaults.standard.array(forKey: recordsKey) as? [[String: Any]] ?? []
-        let records = allRecords.filter { ($0["account"] as? String) == account.2 }
+        let records = allRecords.filter { record in
+            if let scope { return scope.selects(record, account: account.2) }
+            return record["account"] as? String == account.2
+        }
         let legacyIds = UserDefaults.standard.array(forKey: "TGExtraDeletedMessageIds") as? [NSNumber] ?? []
         let knownIds = Set(allRecords.compactMap { ($0["id"] as? NSNumber)?.int32Value })
-        let unresolved = legacyIds.filter { !knownIds.contains($0.int32Value) }.count
+        let unresolved = scope == nil ? legacyIds.filter { !knownIds.contains($0.int32Value) }.count : 0
         guard !records.isEmpty else {
+            if scope != nil { completion(0, 0, nil); return }
             let status = UserDefaults.standard.string(forKey: "TGExtraRetainedMessageStatus")
             let error = status?.contains("non trovato") == true ? status : nil
             completion(0, unresolved, error)
@@ -609,6 +623,7 @@ class TGExtraDeletedMessageCleaner: NSObject {
             var seen = Set<String>()
             ids = ids.filter {
                 guard let fields = components($0), records.contains(where: { matches(fields, record: $0) }) else { return false }
+                if let scope, !scope.contains(fields) { return false }
                 return seen.insert(fields.key).inserted
             }
             return (ids, "ID chat: \(observed.count); ID canali nativi: \(decoded.count); lookup globale: \(globalCount); candidati: \(candidateCount); ID validati: \(ids.count). \(cellStatus)")
@@ -636,8 +651,8 @@ class TGExtraDeletedMessageCleaner: NSObject {
                 let error = notFound > 0
                     ? "Rimossi \(tokens.count) messaggi. Altri \(notFound) non individuati: registro e icone conservati.\n\nDiagnostica: \(diagnostic)"
                     : nil
-                completion(tokens.count, unresolved, error)
                 cleanupDisposable = nil
+                completion(tokens.count, scope == nil ? unresolved : notFound, error)
         }
         cleanupDisposable = signal.start(next: { result in
             DispatchQueue.main.async {
@@ -652,6 +667,7 @@ class TGExtraDeletedMessageCleaner: NSObject {
                     DispatchQueue.main.async {
                         let existing = messages.flatMap { messageIds(in: $0) }.filter { id in
                             guard let fields = components(id) else { return false }
+                            if let scope, !scope.contains(fields) { return false }
                             return records.contains { matches(fields, record: $0) }
                         }
                         let diagnostic = result.1 + " Trovati via batch: \(existing.count)."

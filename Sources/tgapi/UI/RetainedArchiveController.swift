@@ -27,6 +27,7 @@ final class TGExtraRetainedArchiveController: UITableViewController {
     private var allChats: [RetainedArchiveChat] = []
     private var showRecordsWithoutContent = false
     private var loadError = false
+    private var refreshOnReturn = false
     private var request: RetainedArchiveLoad?
     private var loading = false
 
@@ -49,6 +50,14 @@ final class TGExtraRetainedArchiveController: UITableViewController {
     }
 
     deinit { request?.cancel() }
+
+    override func viewWillAppear(_ animated: Bool) {
+        super.viewWillAppear(animated)
+        if refreshOnReturn {
+            refreshOnReturn = false
+            reloadArchive()
+        }
+    }
 
     @objc private func close() {
         request?.cancel()
@@ -152,16 +161,37 @@ final class TGExtraRetainedArchiveController: UITableViewController {
     override func tableView(_ tableView: UITableView, didSelectRowAt indexPath: IndexPath) {
         tableView.deselectRow(at: indexPath, animated: true)
         guard indexPath.section == 1 else { return }
-        navigationController?.pushViewController(RetainedArchiveMessagesController(chat: chats[indexPath.row], strings: strings), animated: true)
+        let selected = chats[indexPath.row]
+        let fullChat = allChats.first { $0.key == selected.key } ?? selected
+        let controller = RetainedArchiveMessagesController(chat: fullChat, strings: strings, sourceUI: sourceUI,
+            showRecordsWithoutContent: showRecordsWithoutContent) { [weak self] in
+                guard let self else { return }
+                if self.navigationController?.topViewController === self, self.viewIfLoaded?.window != nil { self.reloadArchive() }
+                else { self.refreshOnReturn = true }
+            }
+        navigationController?.pushViewController(controller, animated: true)
     }
 }
 
 private final class RetainedArchiveMessagesController: UITableViewController {
-    private let chat: RetainedArchiveChat
+    private var chat: RetainedArchiveChat
+    private var fullChat: RetainedArchiveChat
     private let strings: [String: String]
-    init(chat: RetainedArchiveChat, strings: [String: String]) {
-        self.chat = chat
+    private weak var sourceUI: UIViewController?
+    private let showRecordsWithoutContent: Bool
+    private let onChanged: () -> Void
+    private var cleaning = false
+    private var request: RetainedArchiveLoad?
+
+    init(chat: RetainedArchiveChat, strings: [String: String], sourceUI: UIViewController?,
+         showRecordsWithoutContent: Bool, onChanged: @escaping () -> Void) {
+        self.fullChat = chat
+        self.chat = RetainedMessageArchive.visibleChats([chat], showRecordsWithoutContent: showRecordsWithoutContent).first ??
+            RetainedArchiveChat(key: chat.key, title: chat.title, messages: [])
         self.strings = strings
+        self.sourceUI = sourceUI
+        self.showRecordsWithoutContent = showRecordsWithoutContent
+        self.onChanged = onChanged
         super.init(style: .insetGrouped)
         title = archiveChatTitle(chat, strings: strings)
     }
@@ -170,6 +200,77 @@ private final class RetainedArchiveMessagesController: UITableViewController {
         super.viewDidLoad()
         tableView.rowHeight = UITableView.automaticDimension
         tableView.estimatedRowHeight = 100
+        let button = UIBarButtonItem(barButtonSystemItem: .trash, target: self, action: #selector(confirmCleanup))
+        button.tintColor = .systemRed
+        button.accessibilityLabel = strings["cleanChat"]
+        navigationItem.rightBarButtonItem = button
+        updateCleanupButton()
+    }
+
+    deinit { request?.cancel() }
+
+    private var cleanupScope: RetainedChatCleanupScope? {
+        RetainedChatCleanupScope(chatKey: fullChat.key, messageIds: fullChat.messages.map { $0.id })
+    }
+
+    private func updateCleanupButton() {
+        navigationItem.rightBarButtonItem?.isEnabled = !cleaning && sourceUI != nil && cleanupScope != nil
+    }
+
+    override func tableView(_ tableView: UITableView, titleForFooterInSection section: Int) -> String? {
+        fullChat.key == "unresolved" ? strings["cleanUnknown"] : nil
+    }
+
+    @objc private func confirmCleanup() {
+        guard !cleaning, let ui = sourceUI, let scope = cleanupScope else { return }
+        let alert = UIAlertController(title: strings["cleanChat"],
+            message: String(format: strings["cleanConfirm"] ?? "Remove locally retained messages from %@? Unavailable records will be kept.",
+                archiveChatTitle(fullChat, strings: strings)), preferredStyle: .alert)
+        alert.addAction(UIAlertAction(title: strings["cancel"] ?? "Cancel", style: .cancel))
+        alert.addAction(UIAlertAction(title: strings["cleanChat"] ?? "Clear retained messages", style: .destructive) { [weak self] _ in
+            guard let self else { return }
+            self.cleaning = true
+            self.updateCleanupButton()
+            let notify = self.onChanged
+            TGExtraDeletedMessageCleaner.clearChat(ui, scope: scope) { [weak self] removed, remaining, error in
+                notify()
+                guard let self else { return }
+                var result = String(format: self.strings["cleanResult"] ?? "%ld messages removed locally.", removed)
+                if remaining > 0 {
+                    result += "\n\n" + String(format: self.strings["cleanRemaining"] ?? "%ld records could not be removed and were kept.", remaining)
+                } else if error != nil { result = self.strings["cleanFailed"] ?? "Cleanup could not run. Open a chat in this account and try again." }
+                self.reloadChat(ui) { [weak self] in
+                    guard let self else { return }
+                    let message = UIAlertController(title: self.strings["cleanChat"], message: result, preferredStyle: .alert)
+                    message.addAction(UIAlertAction(title: self.strings["ok"] ?? "OK", style: .default))
+                    if self.viewIfLoaded?.window != nil { self.present(message, animated: true) }
+                }
+            }
+        })
+        present(alert, animated: true)
+    }
+
+    private func reloadChat(_ ui: UIViewController, completion: @escaping () -> Void) {
+        request?.cancel()
+        let key = fullChat.key
+        request = TGExtraDeletedMessageCleaner.loadArchive(ui) { [weak self] chats, error in
+            guard let self else { return }
+            self.cleaning = false
+            self.fullChat = chats?.first { $0.key == key } ?? RetainedArchiveChat(key: key, title: self.fullChat.title, messages: [])
+            self.chat = RetainedMessageArchive.visibleChats([self.fullChat], showRecordsWithoutContent: self.showRecordsWithoutContent).first ??
+                RetainedArchiveChat(key: key, title: self.fullChat.title, messages: [])
+            self.updateCleanupButton()
+            if error != nil || self.chat.messages.isEmpty {
+                let label = UILabel()
+                label.numberOfLines = 0
+                label.textAlignment = .center
+                label.textColor = .secondaryLabel
+                label.text = error != nil ? self.strings["account"] : self.strings["cleanEmpty"]
+                self.tableView.backgroundView = label
+            } else { self.tableView.backgroundView = nil }
+            self.tableView.reloadData()
+            completion()
+        }
     }
     override func tableView(_ tableView: UITableView, numberOfRowsInSection section: Int) -> Int { chat.messages.count }
     override func tableView(_ tableView: UITableView, cellForRowAt indexPath: IndexPath) -> UITableViewCell {
