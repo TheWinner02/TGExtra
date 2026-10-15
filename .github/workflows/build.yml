@@ -60,6 +60,17 @@ jobs:
                 swiftc Sources/tgapi/RetainedMessageArchive.swift scripts/test-retained-archive.swift -o "$RUNNER_TEMP/tgextra-archive-tests"
                 "$RUNNER_TEMP/tgextra-archive-tests"
 
+            - name: Test SwiftSignalKit disposable ABI
+              shell: bash
+              run: |
+                fixture="$RUNNER_TEMP/tgextra-disposable-abi"
+                mkdir -p "$fixture/native" "$fixture/stub"
+                swiftc -module-name SwiftSignalKit -emit-library -emit-module scripts/disposable-abi-fixture.swift -emit-module-path "$fixture/native/SwiftSignalKit.swiftmodule" -o "$fixture/native/libSwiftSignalKit.dylib"
+                target="$(uname -m)-apple-macosx14.0"
+                sed "s/arm64-apple-ios14.0/$target/g" Sources/SwiftStubs/SwiftSignalKit.swiftmodule/arm64-apple-ios.swiftinterface > "$fixture/stub/SwiftSignalKit.swiftinterface"
+                swiftc -I "$fixture/stub" scripts/test-disposable-abi.swift -L "$fixture/native" -lSwiftSignalKit -Xlinker -rpath -Xlinker "$fixture/native" -o "$fixture/test"
+                "$fixture/test"
+
             - name: Fetch Theos
               uses: actions/checkout@v7
               with:
@@ -98,6 +109,10 @@ jobs:
                     exit 1
                   fi
                   nm -g "$library" | grep -E ' [Tt] _TGExtraRefreshStoryVisibility$'
+                  if nm -u "$library" | grep -F '$s14SwiftSignalKit10DisposableP7disposeyyFTj'; then
+                    echo "Incompatible resilient Disposable dispatch thunk"
+                    exit 1
+                  fi
                 done < <(find .theos/obj -type f -name TGExtra.dylib)
 
             - name: Upload DEB
