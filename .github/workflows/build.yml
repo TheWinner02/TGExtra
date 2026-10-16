@@ -94,7 +94,7 @@ jobs:
             - name: Test manual chat and topic read scopes
               shell: bash
               run: |
-                swiftc Sources/tgapi/AccountAvatarPolicy.swift Sources/tgapi/ManualReadPolicy.swift scripts/test-manual-read.swift -o "$RUNNER_TEMP/tgextra-manual-read-tests"
+                swiftc Sources/tgapi/AccountAvatarPolicy.swift Sources/tgapi/ManualReadPolicy.swift Sources/tgapi/ManualReadNavigation.swift scripts/test-manual-read.swift -o "$RUNNER_TEMP/tgextra-manual-read-tests"
                 "$RUNNER_TEMP/tgextra-manual-read-tests"
                 plutil -lint TGExtra.bundle/en.lproj/Localizable.strings TGExtra.bundle/it.lproj/Localizable.strings
 

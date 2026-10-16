@@ -2,6 +2,7 @@ import Foundation
 
 @main
 struct ManualReadTests {
+    final class Button: NSObject {}
     struct Namespace { let rawValue: UInt32 }
     struct Id { let rawValue: Int64 }
     struct PeerId { let namespace: Namespace; let id: Id }
@@ -54,6 +55,18 @@ struct ManualReadTests {
         let largeScope = ManualReadScope(location: Location.peer(id: large))!
         let largeData = ManualReadPolicy.payload(scope: largeScope, profile: User(id: large, accessHash: .personal(8)), ownPeerKey: nil)!
         precondition(i64(largeData, 8) == 0x123456789)
+        let avatar = Button(), eye = Button(), menu = Button(), replacementAvatar = Button()
+        let first = ManualReadNavigation.items([avatar], eye: eye)
+        precondition(first.count == 2 && first[0] === avatar && first[1] === eye)
+        let repeated = ManualReadNavigation.items(first, eye: eye)
+        precondition(repeated.count == 2 && repeated[0] === avatar && repeated[1] === eye)
+        let replaced = ManualReadNavigation.items([replacementAvatar, menu], eye: eye)
+        precondition(replaced.count == 3 && replaced[0] === replacementAvatar && replaced[1] === menu && replaced[2] === eye)
+        let cleared = ManualReadNavigation.items([Button](), eye: eye)
+        precondition(cleared.count == 1 && cleared[0] === eye)
+        let duplicates = ManualReadNavigation.items([eye, avatar, eye], eye: eye)
+        precondition(duplicates.count == 2 && duplicates[0] === avatar && duplicates[1] === eye)
+        precondition(replaced.filter { $0 !== eye }.count == 2, "Disabling must preserve the newest native buttons")
         print("Manual read: peer types, topic isolation, ownership, access hashes and TL payloads passed")
     }
 }

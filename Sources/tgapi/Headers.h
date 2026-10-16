@@ -8,6 +8,7 @@
 + (void)updateForController:(UIViewController *)controller;
 + (void)hideForController:(UIViewController *)controller;
 + (void)refreshButtons;
++ (NSArray<UIBarButtonItem *> *)rightItemsForNavigationItem:(UINavigationItem *)item proposedItems:(NSArray<UIBarButtonItem *> *)items;
 @end
 
 @interface TLParser : NSObject

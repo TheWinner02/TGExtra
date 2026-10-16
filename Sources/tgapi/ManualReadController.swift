@@ -36,6 +36,7 @@ private final class ManualReadButtonState: NSObject {
 @objc(TGExtraManualReadController)
 final class TGExtraManualReadController: NSObject {
     private static var stateKey: UInt8 = 0
+    private static var navigationStateKey: UInt8 = 0
     private static let owners = NSHashTable<UIViewController>.weakObjects()
     private static let preference = "disableMessageReadReceipt"
 
@@ -46,6 +47,8 @@ final class TGExtraManualReadController: NSObject {
         if !UserDefaults.standard.bool(forKey: preference) {
             if let old {
                 old.cancel()
+                // Detach first, otherwise the setter hook would restore the eye.
+                objc_setAssociatedObject(controller.navigationItem, &navigationStateKey, nil, .OBJC_ASSOCIATION_RETAIN_NONATOMIC)
                 let items = controller.navigationItem.rightBarButtonItems ?? controller.navigationItem.rightBarButtonItem.map { [$0] } ?? []
                 if items.contains(where: { $0 === old.item }) {
                     controller.navigationItem.rightBarButtonItems = items.filter { $0 !== old.item }
@@ -53,18 +56,28 @@ final class TGExtraManualReadController: NSObject {
             }
             return
         }
-        guard controller.viewIfLoaded?.window != nil else { return }
+        guard controller.viewIfLoaded != nil else { return }
         let state = old ?? ManualReadButtonState(controller: controller)
         if old == nil {
             objc_setAssociatedObject(controller, &stateKey, state, .OBJC_ASSOCIATION_RETAIN_NONATOMIC)
             owners.add(controller)
         }
+        objc_setAssociatedObject(controller.navigationItem, &navigationStateKey, state, .OBJC_ASSOCIATION_RETAIN_NONATOMIC)
         let items = controller.navigationItem.rightBarButtonItems ?? controller.navigationItem.rightBarButtonItem.map { [$0] } ?? []
-        // Preserve the client's avatar, menus and action targets. This is also
-        // the fast layout path: no chat/message reflection while scrolling.
+        // Install once on appearance; subsequent native updates are merged in
+        // the navigation-item setters, not repaired after every layout.
         if !items.contains(where: { $0 === state.item }) {
-            controller.navigationItem.rightBarButtonItems = items + [state.item]
+            controller.navigationItem.rightBarButtonItems = ManualReadNavigation.items(items, eye: state.item)
         }
+    }
+
+    @objc(rightItemsForNavigationItem:proposedItems:)
+    static func rightItems(_ item: UINavigationItem, proposedItems: [UIBarButtonItem]) -> [UIBarButtonItem]? {
+        guard Thread.isMainThread,
+              let state = objc_getAssociatedObject(item, &navigationStateKey) as? ManualReadButtonState,
+              state.controller?.navigationItem === item,
+              UserDefaults.standard.bool(forKey: preference) else { return nil }
+        return ManualReadNavigation.items(proposedItems, eye: state.item)
     }
 
     @objc(hideForController:)
