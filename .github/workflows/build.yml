@@ -88,7 +88,7 @@ jobs:
                 for module in SwiftSignalKit Postbox; do
                   sed "s/arm64-apple-ios14.0/$target/g" "Sources/SwiftStubs/$module.swiftmodule/arm64-apple-ios.swiftinterface" > "$fixture/stub/$module.swiftinterface"
                 done
-                swiftc -parse-as-library -I "$fixture/stub" Sources/tgapi/AccountAvatarPolicy.swift Sources/tgapi/RetainedMessageIdentity.swift Sources/tgapi/RetainedMessageArchive.swift scripts/test-avatar-batch-abi.swift -L "$fixture/native" -lPostbox -lSwiftSignalKit -Xlinker -rpath -Xlinker "$fixture/native" -o "$fixture/test"
+                swiftc -parse-as-library -I "$fixture/stub" Sources/tgapi/NativePeerLookup.swift Sources/tgapi/AccountAvatarPolicy.swift Sources/tgapi/RetainedMessageIdentity.swift Sources/tgapi/RetainedMessageArchive.swift scripts/test-avatar-batch-abi.swift -L "$fixture/native" -lPostbox -lSwiftSignalKit -Xlinker -rpath -Xlinker "$fixture/native" -o "$fixture/test"
                 "$fixture/test"
 
             - name: Test manual chat and topic read scopes

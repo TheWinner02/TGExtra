@@ -394,13 +394,7 @@ class TGExtraDeletedMessageCleaner: NSObject {
               let basePath = nativeStoredValue(named: "basePath", in: mediaBox) as? String else {
             finish(nil, "Fallback: percorso MediaBox non leggibile; account riconosciuto."); return
         }
-        let symbols = [
-            "$s7Postbox6PeerIdV21decodeArrayFromBufferySayACGAA04ReadG0CFZ",
-            "$s7Postbox10ReadBufferC4dataAC10Foundation4DataV_tcfC",
-            "$s7Postbox17MultiplePeersViewCMa",
-            "$s7PostboxAAC17multiplePeersViewy14SwiftSignalKit0F0CyAA08MultiplecD0CAD7NoErrorOGSayAA6PeerIdVGF"
-        ]
-        guard symbols.allSatisfy({ dlsym(telegramCoreHandle, $0) != nil || dlsym(nil, $0) != nil }),
+        guard NativePeerLookup.missing().isEmpty,
               let data = AccountAvatarPolicy.encodedPeerIds(ownPeer) else {
             finish(nil, "Fallback: API profilo batch non disponibile nel client."); return
         }

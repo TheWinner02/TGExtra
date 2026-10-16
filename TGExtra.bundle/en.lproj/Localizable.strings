@@ -157,6 +157,9 @@
 "MANUAL_READ_TITLE" = "Read confirmation";
 "MANUAL_READ_HINT" = "Use the eye beside the chat avatar to send a one-time read confirmation. In a topic, only that topic is marked as read. Telegram may briefly show you online to the sender when you confirm reading in a private chat.";
 "MANUAL_READ_UNSUPPORTED" = "This chat cannot be identified safely. Secret chats and Saved Messages subthreads are not supported.";
+"MANUAL_READ_DIAGNOSTIC" = "Diagnostics";
+"MANUAL_READ_ACCOUNT_UNAVAILABLE" = "Could not resolve this chat's account. No read confirmation was sent.";
+"MANUAL_READ_API_UNAVAILABLE" = "Native APIs for reading the chat profile are unavailable. No read confirmation was sent.";
 "MANUAL_READ_LOOKUP_ERROR" = "Could not read the chat data locally. Open the chat again and retry.";
 "MANUAL_READ_TRANSPORT_UNAVAILABLE" = "The account's connection service is not available. Reopen the chat and retry.";
 "MANUAL_READ_SERVER_ERROR" = "Telegram did not confirm the read request. Read hiding remains enabled; you can retry.";

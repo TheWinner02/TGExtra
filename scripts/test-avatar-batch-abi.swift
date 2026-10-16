@@ -8,6 +8,9 @@ func avatarFixturePostbox() -> Postbox
 @main
 struct AvatarBatchABITests {
     static func main() {
+        precondition(NativePeerLookup.missing().isEmpty, "Native peer APIs must resolve through a valid Darwin process handle")
+        precondition(NativePeerLookup.missing(in: ["TGExtraNonexistentPeerSymbolForTest"]) == [0])
+        precondition(NativePeerLookup.missing(in: []) == [])
         let data = AccountAvatarPolicy.encodedPeerIds("123")!
         let ids = PeerId.decodeArrayFromBuffer(ReadBuffer(data: data))
         // Opaque native array: no element reads on this side of the stub.

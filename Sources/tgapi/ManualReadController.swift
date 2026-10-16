@@ -1,7 +1,6 @@
 import Foundation
 import UIKit
 import ObjectiveC
-import Darwin
 import Postbox
 import TelegramCore
 import tgapiC
@@ -97,8 +96,12 @@ final class TGExtraManualReadController: NSObject {
 
     fileprivate static func markRead(_ controller: UIViewController, state: ManualReadButtonState) {
         guard UserDefaults.standard.bool(forKey: preference) else { update(controller); return }
-        func failure(_ key: String) {
-            let message = TGExtraManualReadTransport.text(key)
+        func failure(_ key: String, diagnostic: String? = nil) {
+            var message = TGExtraManualReadTransport.text(key)
+            if let diagnostic {
+                message += "\n\n" + TGExtraManualReadTransport.text("MANUAL_READ_DIAGNOSTIC") + ": " + diagnostic
+            }
+            NSLog("[TGExtra Manual Read] %@", message)
             UserDefaults.standard.set(message, forKey: "TGExtraManualReadStatus")
             if controller.presentedViewController == nil {
                 let alert = UIAlertController(title: TGExtraManualReadTransport.text("MANUAL_READ_TITLE"), message: message, preferredStyle: .alert)
@@ -106,22 +109,38 @@ final class TGExtraManualReadController: NSObject {
                 controller.present(alert, animated: true)
             }
         }
-        guard let target = scope(controller),
-              let context = nativeStoredValue(named: "context", in: controller),
-              let account = nativeStoredValue(named: "account", in: context) as? Account,
-              let postbox = nativeStoredValue(named: "postbox", in: account) as? Postbox,
-              let network = nativeStoredValue(named: "network", in: account),
-              let transport = nativeStoredValue(named: "mtProto", in: network),
-              let path = nativeStoredValue(named: "basePath", in: network) as? String else {
-            failure("MANUAL_READ_UNSUPPORTED"); return
+        guard let target = scope(controller) else {
+            // Type/case names only, never peer IDs, paths or message contents.
+            let detail: String
+            if let location = nativeStoredValue(named: "chatLocation", in: controller) {
+                detail = "scope: \(String(reflecting: type(of: location))); case: \(Mirror(reflecting: location).children.first?.label ?? "none")"
+            } else { detail = "scope: chatLocation missing" }
+            failure("MANUAL_READ_UNSUPPORTED", diagnostic: detail); return
         }
-        let symbols = ["$s7Postbox6PeerIdV21decodeArrayFromBufferySayACGAA04ReadG0CFZ",
-                       "$s7Postbox10ReadBufferC4dataAC10Foundation4DataV_tcfC",
-                       "$s7Postbox17MultiplePeersViewCMa",
-                       "$s7PostboxAAC17multiplePeersViewy14SwiftSignalKit0F0CyAA08MultiplecD0CAD7NoErrorOGSayAA6PeerIdVGF"]
-        guard symbols.allSatisfy({ dlsym(nil, $0) != nil }),
-              let data = AccountAvatarPolicy.encodedPeerIds(target.peerKey) else {
-            failure("MANUAL_READ_UNSUPPORTED"); return
+        guard let context = nativeStoredValue(named: "context", in: controller) else {
+            failure("MANUAL_READ_ACCOUNT_UNAVAILABLE", diagnostic: "context missing"); return
+        }
+        guard let account = nativeStoredValue(named: "account", in: context) as? Account else {
+            failure("MANUAL_READ_ACCOUNT_UNAVAILABLE", diagnostic: "context.account missing/incompatible"); return
+        }
+        guard let postbox = nativeStoredValue(named: "postbox", in: account) as? Postbox else {
+            failure("MANUAL_READ_ACCOUNT_UNAVAILABLE", diagnostic: "account.postbox missing/incompatible"); return
+        }
+        guard let network = nativeStoredValue(named: "network", in: account) else {
+            failure("MANUAL_READ_ACCOUNT_UNAVAILABLE", diagnostic: "account.network missing"); return
+        }
+        guard let transport = nativeStoredValue(named: "mtProto", in: network) else {
+            failure("MANUAL_READ_ACCOUNT_UNAVAILABLE", diagnostic: "network.mtProto missing"); return
+        }
+        guard let path = nativeStoredValue(named: "basePath", in: network) as? String else {
+            failure("MANUAL_READ_ACCOUNT_UNAVAILABLE", diagnostic: "network.basePath missing"); return
+        }
+        let missing = NativePeerLookup.missing()
+        guard missing.isEmpty else {
+            failure("MANUAL_READ_API_UNAVAILABLE", diagnostic: "native API unavailable: \(missing.map(String.init).joined(separator: ", "))"); return
+        }
+        guard let data = AccountAvatarPolicy.encodedPeerIds(target.peerKey) else {
+            failure("MANUAL_READ_UNSUPPORTED", diagnostic: "peer ID encoding rejected"); return
         }
         let ownKey = nativeStoredValue(named: "peerId", in: account).flatMap(AccountAvatarPolicy.peerKey)
         state.cancel()
