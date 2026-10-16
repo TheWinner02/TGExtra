@@ -91,6 +91,13 @@ jobs:
                 swiftc -parse-as-library -I "$fixture/stub" Sources/tgapi/AccountAvatarPolicy.swift Sources/tgapi/RetainedMessageIdentity.swift Sources/tgapi/RetainedMessageArchive.swift scripts/test-avatar-batch-abi.swift -L "$fixture/native" -lPostbox -lSwiftSignalKit -Xlinker -rpath -Xlinker "$fixture/native" -o "$fixture/test"
                 "$fixture/test"
 
+            - name: Test manual chat and topic read scopes
+              shell: bash
+              run: |
+                swiftc Sources/tgapi/AccountAvatarPolicy.swift Sources/tgapi/ManualReadPolicy.swift scripts/test-manual-read.swift -o "$RUNNER_TEMP/tgextra-manual-read-tests"
+                "$RUNNER_TEMP/tgextra-manual-read-tests"
+                plutil -lint TGExtra.bundle/en.lproj/Localizable.strings TGExtra.bundle/it.lproj/Localizable.strings
+
             - name: Fetch Theos
               uses: actions/checkout@v7
               with:

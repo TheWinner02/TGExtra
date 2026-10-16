@@ -4,6 +4,7 @@
 #define kAccountUpdateOnlineStatus 1713919532
 #define kMessagesSetTypingAction 1486110434
 #define kMessagesReadHistory 238054714
+#define kMessagesReadDiscussion -147740172
 #define kStoriesReadStories -1521034552
 #define kGetSponsoredMessages -1680673735
 // Newer layers add flags and an optional msg_id; the empty response is unchanged.

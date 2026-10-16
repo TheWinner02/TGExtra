@@ -127,6 +127,13 @@ static NSData *TGExtraNeutralizeDeleteUpdates(NSData *data, id transport) {
           metadata:(id)metadata
      shortMetadata:(id)shortMetadata
     responseParser:(id (^)(NSData *))responseParser {
+    // Only the exact one-shot request created by the eye button bypasses the
+    // read blocker. Never toggle the global privacy setting, even temporarily.
+    if ([TGExtraManualReadTransport isAuthorizedRequest:self payload:payload]) {
+        self.fakeData = nil;
+        %orig(payload, metadata, shortMetadata, responseParser);
+        return;
+    }
     // Automatic scheduling must be applied before Telegram enqueues the message.
     // Mutating this serialized request creates a mismatch between local and server state.
     NSData *effectivePayload = [TLParser prepareDefaultSilent:payload] ?: payload;
@@ -159,6 +166,7 @@ static NSData *TGExtraNeutralizeDeleteUpdates(NSData *data, id transport) {
             handleGetSponsoredMessages(self, effectivePayload);
             break;
         case kChannelsReadHistory:
+        case kMessagesReadDiscussion:
             handleChannelsReadReceipt(self, effectivePayload);
             break;
         case kSendScreenshotNotification:
@@ -181,6 +189,11 @@ static NSData *TGExtraNeutralizeDeleteUpdates(NSData *data, id transport) {
 %end
 
 %hook MTRequestMessageService
+
+- (void)mtProtoDidAddService:(id)transport {
+    %orig;
+    [TGExtraManualReadTransport registerService:self transport:transport];
+}
 
 - (void)addRequest:(MTRequest *)request {
     if (request.fakeData) {

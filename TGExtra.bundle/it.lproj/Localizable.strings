@@ -155,6 +155,17 @@
 "RETAINED_ARCHIVE_ATTACHMENT" = "Allegato";
 
 /* Extras */
+"MANUAL_READ_ACTION" = "Segna come letta questa chat o questo topic";
+"MANUAL_READ_TITLE" = "Conferma di lettura";
+"MANUAL_READ_HINT" = "Usa l'occhio accanto all'avatar della chat per inviare una conferma di lettura singola. Dentro un topic viene segnato come letto solo quel topic.";
+"MANUAL_READ_UNSUPPORTED" = "Non è possibile identificare questa chat in sicurezza. Le chat segrete e i sotto-thread dei Messaggi salvati non sono supportati.";
+"MANUAL_READ_LOOKUP_ERROR" = "Non è stato possibile leggere i dati locali della chat. Riapri la chat e riprova.";
+"MANUAL_READ_TRANSPORT_UNAVAILABLE" = "Il servizio di connessione dell'account non è disponibile. Riapri la chat e riprova.";
+"MANUAL_READ_SERVER_ERROR" = "Telegram non ha confermato la richiesta di lettura. Il blocco automatico rimane attivo: puoi riprovare.";
+"MANUAL_READ_TIMEOUT" = "Nessuna conferma ricevuta entro 15 secondi. La richiesta potrebbe essere già arrivata a Telegram: puoi riprovare.";
+"MANUAL_READ_PENDING" = "Preparazione della conferma di lettura singola…";
+"MANUAL_READ_DONE" = "Conferma di lettura accettata da Telegram. Il blocco automatico rimane attivo.";
+
 "APPLY" = "Applica";
 "APPLY_CHANGES" = "Sei sicuro di voler applicare queste modifiche?";
 

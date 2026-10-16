@@ -61,7 +61,7 @@ private enum NativeSendUICleanupResult {
     }
 }
 
-private func nativeStoredValue(named name: String, in object: Any) -> Any? {
+func nativeStoredValue(named name: String, in object: Any) -> Any? {
     var currentMirror: Mirror? = Mirror(reflecting: object)
     while let mirror = currentMirror {
         for child in mirror.children where child.label == name {

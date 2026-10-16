@@ -2,6 +2,13 @@
 #import <UIKit/UIKit.h>
 #import "Logger/Logger.h"
 #import "Constants.h"
+#import "../tgapiC/include/Tweak.h"
+
+@interface TGExtraManualReadController : NSObject
++ (void)updateForController:(UIViewController *)controller;
++ (void)hideForController:(UIViewController *)controller;
++ (void)refreshButtons;
+@end
 
 @interface TLParser : NSObject
 + (NSData *)handleResponse:(NSData *)data functionID:(NSNumber *)ios;
@@ -55,6 +62,9 @@ void TGExtraRefreshStoryVisibility(void);
 @property (nonatomic, strong) NSData *payload;
 @property (nonatomic, copy) void (^completed)(id boxedResponse, MTRequestResponseInfo *info, MTRpcError *error);
 @property (nonatomic, strong, readonly) id (^responseParser)(NSData *);
+@property (nonatomic, strong, readonly) id internalId;
+@property (nonatomic) BOOL needsTimeoutTimer;
+- (void)setPayload:(NSData *)payload metadata:(id)metadata shortMetadata:(id)shortMetadata responseParser:(id (^)(NSData *))responseParser;
 @end
 
 // Function Handlers

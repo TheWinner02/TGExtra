@@ -382,6 +382,9 @@ typedef NS_ENUM(NSInteger, TABLE_VIEW_SECTIONS) {
 		if (indexPath.row == 0) {
 			cell.textLabel.text = TGLoc(@"DISABLE_MESSAGE_READ_RECEIPT_TITLE");
 			cell.detailTextLabel.text = TGLoc(@"DISABLE_MESSAGE_READ_RECEIPT_SUBTITLE");
+            cell.detailTextLabel.text = [cell.detailTextLabel.text stringByAppendingFormat:@"\n%@", TGLoc(@"MANUAL_READ_HINT")];
+            NSString *manualReadStatus = [[NSUserDefaults standardUserDefaults] stringForKey:@"TGExtraManualReadStatus"];
+            if (manualReadStatus.length > 0) cell.detailTextLabel.text = [cell.detailTextLabel.text stringByAppendingFormat:@"\nDiagnostica: %@", manualReadStatus];
 		}
 		else if (indexPath.row == 1) {
 			cell.textLabel.text = TGLoc(@"DISABLE_STORY_READ_RECEIPT_TITLE");
@@ -761,6 +764,9 @@ typedef NS_ENUM(NSInteger, TABLE_VIEW_SECTIONS) {
 
     if (switchKey) {
         [[NSUserDefaults standardUserDefaults] setBool:sender.isOn forKey:switchKey];
+        if ([switchKey isEqualToString:kDisableMessageReadReceipt]) {
+            [TGExtraManualReadController refreshButtons];
+        }
         if ([switchKey isEqualToString:kHideStories]) {
             TGExtraRefreshStoryVisibility();
         }
