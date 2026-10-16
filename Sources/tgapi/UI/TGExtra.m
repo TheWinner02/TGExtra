@@ -11,6 +11,7 @@
 @property (nonatomic, strong) NSString *cacheSize;
 @property (nonatomic, strong) UIImageView *headerIconView;
 @property (nonatomic, strong) UIImage *fallbackHeaderImage;
+@property (nonatomic, strong) UILabel *avatarDiagnosticLabel;
 @property (nonatomic) NSUInteger headerImageGeneration;
 @end
 
@@ -41,11 +42,13 @@
     [super viewWillAppear:animated];
     NSUInteger generation = ++self.headerImageGeneration;
     self.headerIconView.image = self.fallbackHeaderImage;
+    self.avatarDiagnosticLabel.text = @"Diagnostica avatar: ricerca in corso…";
     __weak TGExtra *weakSelf = self;
-    [TGExtraDeletedMessageCleaner loadAccountAvatarForUI:self completion:^(UIImage *image) {
+    [TGExtraDeletedMessageCleaner loadAccountAvatarForUI:self completion:^(UIImage *image, NSString *diagnostic) {
         TGExtra *strongSelf = weakSelf;
         if (!strongSelf || strongSelf.headerImageGeneration != generation) return;
         strongSelf.headerIconView.image = image ?: strongSelf.fallbackHeaderImage;
+        strongSelf.avatarDiagnosticLabel.text = [@"Diagnostica avatar: " stringByAppendingString:diagnostic];
     }];
 }
 
@@ -112,7 +115,7 @@
 }
 
 - (void)setupIconAsHeader {
-    UIView *logoContainer = [[UIView alloc] initWithFrame:CGRectMake(0, 0, self.tableView.frame.size.width, 100)];
+    UIView *logoContainer = [[UIView alloc] initWithFrame:CGRectMake(0, 0, self.tableView.frame.size.width, 230)];
 
     // Logo Image
 	NSData *imageData = [[NSData alloc] initWithBase64EncodedString:TW02PNG options:NSDataBase64DecodingIgnoreUnknownCharacters];
@@ -127,11 +130,24 @@
 
     [logoContainer addSubview:iconView];
 
+    UILabel *diagnostic = [[UILabel alloc] init];
+    diagnostic.translatesAutoresizingMaskIntoConstraints = NO;
+    diagnostic.font = [UIFont systemFontOfSize:12];
+    diagnostic.textColor = UIColor.secondaryLabelColor;
+    diagnostic.numberOfLines = 0;
+    diagnostic.textAlignment = NSTextAlignmentCenter;
+    self.avatarDiagnosticLabel = diagnostic;
+    [logoContainer addSubview:diagnostic];
+
     [NSLayoutConstraint activateConstraints:@[
-        [iconView.centerYAnchor constraintEqualToAnchor:logoContainer.centerYAnchor],
+        [iconView.topAnchor constraintEqualToAnchor:logoContainer.topAnchor],
         [iconView.centerXAnchor constraintEqualToAnchor:logoContainer.centerXAnchor],
         [iconView.widthAnchor constraintEqualToConstant:100],
-        [iconView.heightAnchor constraintEqualToConstant:100]
+        [iconView.heightAnchor constraintEqualToConstant:100],
+        [diagnostic.topAnchor constraintEqualToAnchor:iconView.bottomAnchor constant:10],
+        [diagnostic.leadingAnchor constraintEqualToAnchor:logoContainer.leadingAnchor constant:20],
+        [diagnostic.trailingAnchor constraintEqualToAnchor:logoContainer.trailingAnchor constant:-20],
+        [diagnostic.bottomAnchor constraintLessThanOrEqualToAnchor:logoContainer.bottomAnchor constant:-8]
     ]];
 
     self.tableView.tableHeaderView = logoContainer;

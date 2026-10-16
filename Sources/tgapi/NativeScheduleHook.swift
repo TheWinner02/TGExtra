@@ -361,15 +361,29 @@ class TGExtraDeletedMessageCleaner: NSObject {
     }
 
     @objc(loadAccountAvatarForUI:completion:)
-    static func loadAccountAvatar(_ ui: UIViewController, completion: @escaping (UIImage?) -> Void) {
+    static func loadAccountAvatar(_ ui: UIViewController, completion: @escaping (UIImage?, String) -> Void) {
         precondition(Thread.isMainThread)
-        guard let path = objc_getAssociatedObject(ui, &uiAccountKey) as? String,
-              let account = retainedMessageAccounts().first(where: { $0.2 == path }),
-              let peer = nativeStoredValue(named: "peerId", in: account.0),
-              let ownPeer = AccountAvatarPolicy.peerKey(peer),
-              let mediaBox = nativeStoredValue(named: "mediaBox", in: account.1),
+        // Diagnostics contain counts and failure stages only: no account IDs,
+        // photo resource IDs, paths, or message contents.
+        func finish(_ image: UIImage?, _ status: String) {
+            NSLog("[TGExtra Avatar] %@", status)
+            completion(image, status)
+        }
+        guard let path = objc_getAssociatedObject(ui, &uiAccountKey) as? String else {
+            finish(nil, "Fallback: account del menu non identificato. Apri una chat e riapri TGExtra."); return
+        }
+        guard let account = retainedMessageAccounts().first(where: { $0.2 == path }) else {
+            finish(nil, "Fallback: account associato non presente nel registro nativo."); return
+        }
+        guard let peer = nativeStoredValue(named: "peerId", in: account.0) else {
+            finish(nil, "Fallback: campo account.peerId non leggibile."); return
+        }
+        guard let ownPeer = AccountAvatarPolicy.peerKey(peer) else {
+            finish(nil, "Fallback: formato account.peerId non riconosciuto."); return
+        }
+        guard let mediaBox = nativeStoredValue(named: "mediaBox", in: account.1),
               let basePath = nativeStoredValue(named: "basePath", in: mediaBox) as? String else {
-            completion(nil); return
+            finish(nil, "Fallback: percorso MediaBox non leggibile; account riconosciuto."); return
         }
         // Inspect already-loaded views only, once when the menu opens. No avatar
         // hooks, no global account image cache, and no arbitrary chat screenshots.
@@ -386,27 +400,41 @@ class TGExtraDeletedMessageCleaner: NSObject {
         let selector = NSSelectorFromString("asyncdisplaykit_node")
         var seen = Set<ObjectIdentifier>()
         var resources: [String] = []
+        var nodes = 0
+        var avatars = 0
+        var rejected: [String: Int] = [:]
         while let view = pending.popLast(), seen.count < 4000 {
             guard seen.insert(ObjectIdentifier(view)).inserted else { continue }
             pending.append(contentsOf: view.subviews)
             guard view.responds(to: selector),
-                  let node = view.perform(selector)?.takeUnretainedValue(),
-                  String(reflecting: type(of: node)).contains("AvatarNode"),
-                  let id = AccountAvatarPolicy.resourceId(in: node, accountPeer: ownPeer),
-                  !resources.contains(id) else { continue }
-            resources.append(id)
+                  let node = view.perform(selector)?.takeUnretainedValue() else { continue }
+            nodes += 1
+            guard String(reflecting: type(of: node)).contains("AvatarNode") else { continue }
+            avatars += 1
+            if let id = AccountAvatarPolicy.resourceId(in: node, accountPeer: ownPeer) {
+                if !resources.contains(id) { resources.append(id) }
+            } else {
+                let reason = AccountAvatarPolicy.rejectionReason(in: node, accountPeer: ownPeer)
+                rejected[reason, default: 0] += 1
+            }
         }
-        guard !resources.isEmpty else { completion(nil); return }
+        let reasons = rejected.keys.sorted().map { "\($0): \(rejected[$0]!)" }.joined(separator: "; ")
+        let scan = "Account riconosciuto. Viste: \(seen.count); nodi: \(nodes); avatar: \(avatars); risorse: \(resources.count)." +
+            (pending.isEmpty ? "" : " Limite scansione raggiunto.") + (reasons.isEmpty ? "" : " \(reasons).")
+        guard !resources.isEmpty else { finish(nil, "\(scan) Fallback: nessuna foto propria recuperabile dalle viste caricate."); return }
         let resourceIds = resources
         DispatchQueue.global(qos: .utility).async {
             let directory = URL(fileURLWithPath: basePath, isDirectory: true).resolvingSymlinksInPath()
             var image: UIImage?
+            var missing = 0
+            var invalid = 0
+            var unreadable = 0
             for id in resourceIds {
                 let file = directory.appendingPathComponent(id).resolvingSymlinksInPath()
-                guard file.deletingLastPathComponent().path == directory.path,
-                      let attributes = try? FileManager.default.attributesOfItem(atPath: file.path),
-                      let size = attributes[.size] as? NSNumber, size.intValue > 0, size.intValue <= 4 * 1024 * 1024,
-                      let source = CGImageSourceCreateWithURL(file as CFURL, nil) else { continue }
+                guard file.deletingLastPathComponent().path == directory.path else { invalid += 1; continue }
+                guard let attributes = try? FileManager.default.attributesOfItem(atPath: file.path) else { missing += 1; continue }
+                guard let size = attributes[.size] as? NSNumber, size.intValue > 0, size.intValue <= 4 * 1024 * 1024 else { invalid += 1; continue }
+                guard let source = CGImageSourceCreateWithURL(file as CFURL, nil) else { unreadable += 1; continue }
                 let options: [String: Any] = [
                     kCGImageSourceCreateThumbnailFromImageAlways as String: true,
                     kCGImageSourceCreateThumbnailWithTransform as String: true,
@@ -417,11 +445,13 @@ class TGExtraDeletedMessageCleaner: NSObject {
                     image = UIImage(cgImage: thumbnail)
                     break
                 }
+                unreadable += 1
             }
             let result = image
+            let status = scan + (image != nil ? " Foto caricata dalla cache." : " Fallback cache: assenti/inaccessibili \(missing); file non validi \(invalid); immagini non decodificabili \(unreadable).")
             DispatchQueue.main.async { [weak ui] in
                 guard let ui, objc_getAssociatedObject(ui, &uiAccountKey) as? String == path else { return }
-                completion(result)
+                finish(result, status)
             }
         }
     }

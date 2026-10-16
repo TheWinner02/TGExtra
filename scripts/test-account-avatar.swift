@@ -29,6 +29,10 @@ struct AccountAvatarTests {
         let key = AccountAvatarPolicy.peerKey(owner)!
         let resource = "telegram-peer-photo-size-2-999-0-0-0"
         let params = Params(peerId: owner, resourceId: resource)
+        precondition(AccountAvatarPolicy.rejectionReason(in: Content(params: Params(peerId: other, resourceId: resource), state: .empty), accountPeer: key) == "altri account/chat")
+        precondition(AccountAvatarPolicy.rejectionReason(in: Content(params: Params(peerId: owner, resourceId: nil), state: .empty), accountPeer: key) == "foto propria assente nei parametri")
+        precondition(AccountAvatarPolicy.rejectionReason(in: Content(params: Params(peerId: nil, resourceId: resource), state: .empty), accountPeer: key) == "proprietario illeggibile")
+        precondition(AccountAvatarPolicy.rejectionReason(in: Content(params: nil, state: .empty), accountPeer: key) == "stato avatar assente/non supportato")
         precondition(AccountAvatarPolicy.resourceId(in: Avatar(contentNode: Content(params: params, state: .empty)), accountPeer: key) == resource)
         precondition(AccountAvatarPolicy.resourceId(in: Content(params: params, state: .empty), accountPeer: key) == resource)
         for peer in [other, channel] {

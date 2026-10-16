@@ -15,7 +15,7 @@
 @interface TGExtraDeletedMessageCleaner : NSObject
 + (BOOL)registerNode:(id)node;
 + (void)bindUI:(UIViewController *)ui presenter:(UIViewController *)presenter;
-+ (void)loadAccountAvatarForUI:(UIViewController *)ui completion:(void (^)(UIImage *image))completion;
++ (void)loadAccountAvatarForUI:(UIViewController *)ui completion:(void (^)(UIImage *image, NSString *diagnostic))completion;
 + (NSString *)statusForUI:(UIViewController *)ui;
 + (void)recordIds:(NSArray<NSNumber *> *)ids channelId:(NSNumber *)channelId transport:(id)transport;
 + (void)clearForUI:(UIViewController *)ui completion:(void (^)(NSInteger removed, NSInteger unresolved, NSString *error))completion;

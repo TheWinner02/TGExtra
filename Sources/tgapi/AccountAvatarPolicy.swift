@@ -29,6 +29,25 @@ enum AccountAvatarPolicy {
         }
     }
 
+    static func rejectionReason(in avatar: Any, accountPeer: String) -> String {
+        let content = stored("contentNode", in: avatar) ?? avatar
+        if let params = stored("params", in: content) {
+            guard let peer = stored("peerId", in: params), let key = peerKey(peer) else { return "proprietario illeggibile" }
+            guard key == accountPeer else { return "altri account/chat" }
+            guard let id = stored("resourceId", in: params) as? String else { return "foto propria assente nei parametri" }
+            return validResourceId(id) ? "risorsa propria riconosciuta" : "formato risorsa non supportato"
+        }
+        guard let state = stored("state", in: content),
+              let item = Mirror(reflecting: state).children.first,
+              item.label == "peerAvatar" else { return "stato avatar assente/non supportato" }
+        let fields = Array(Mirror(reflecting: item.value).children)
+        guard fields.count >= 4, let key = peerKey(fields[0].value) else { return "formato stato non supportato" }
+        guard key == accountPeer else { return "altri account/chat" }
+        let representation = Mirror(reflecting: fields[3].value)
+        if representation.displayStyle == .optional && representation.children.isEmpty { return "foto propria assente nello stato" }
+        return "risorsa stato non supportata"
+    }
+
     static func resourceId(in avatar: Any, accountPeer: String) -> String? {
         let content = stored("contentNode", in: avatar) ?? avatar
         if let params = stored("params", in: content) {
