@@ -121,6 +121,12 @@ jobs:
                 echo "THEOS=$GITHUB_WORKSPACE/theos" >> "$GITHUB_ENV"
                 echo "$(brew --prefix make)/libexec/gnubin" >> "$GITHUB_PATH"
 
+            - name: Check generated manual-read navigation hooks
+              shell: bash
+              run: |
+                perl "$THEOS/vendor/logos/bin/logos.pl" -c generator=internal Sources/tgapi/UI/ManualReadHooks.xm > "$RUNNER_TEMP/tgextra-manual-read-hooks.mm"
+                xcrun --sdk iphoneos clang++ -fobjc-arc -fsyntax-only -arch arm64 -mios-version-min=14.0 -x objective-c++ -I Sources/tgapi/UI -I Sources/tgapiC/include "$RUNNER_TEMP/tgextra-manual-read-hooks.mm"
+
             - name: Build Package
               shell: bash
               run: |

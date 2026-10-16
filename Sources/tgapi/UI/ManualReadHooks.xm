@@ -30,23 +30,35 @@ static char TGExtraManualReadRedirectKey;
 - (void)setRightBarButtonItem:(UIBarButtonItem *)item {
     // UIKit can delegate between the single/multiple animated setters. Let its
     // internal calls finish without redirecting back into the same setter.
-    if (objc_getAssociatedObject(self, &TGExtraManualReadRedirectKey)) { %orig; return; }
+    if (objc_getAssociatedObject(self, &TGExtraManualReadRedirectKey)) {
+        %orig;
+        return;
+    }
     NSArray *merged = [TGExtraManualReadController rightItemsForNavigationItem:self proposedItems:item ? @[item] : @[]];
     if (merged) {
         objc_setAssociatedObject(self, &TGExtraManualReadRedirectKey, @YES, OBJC_ASSOCIATION_RETAIN_NONATOMIC);
-        @try { [self setRightBarButtonItems:merged animated:NO]; }
-        @finally { objc_setAssociatedObject(self, &TGExtraManualReadRedirectKey, nil, OBJC_ASSOCIATION_RETAIN_NONATOMIC); }
+        @try {
+            [self setRightBarButtonItems:merged animated:NO];
+        } @finally {
+            objc_setAssociatedObject(self, &TGExtraManualReadRedirectKey, nil, OBJC_ASSOCIATION_RETAIN_NONATOMIC);
+        }
         return;
     }
     %orig;
 }
 - (void)setRightBarButtonItem:(UIBarButtonItem *)item animated:(BOOL)animated {
-    if (objc_getAssociatedObject(self, &TGExtraManualReadRedirectKey)) { %orig; return; }
+    if (objc_getAssociatedObject(self, &TGExtraManualReadRedirectKey)) {
+        %orig;
+        return;
+    }
     NSArray *merged = [TGExtraManualReadController rightItemsForNavigationItem:self proposedItems:item ? @[item] : @[]];
     if (merged) {
         objc_setAssociatedObject(self, &TGExtraManualReadRedirectKey, @YES, OBJC_ASSOCIATION_RETAIN_NONATOMIC);
-        @try { [self setRightBarButtonItems:merged animated:animated]; }
-        @finally { objc_setAssociatedObject(self, &TGExtraManualReadRedirectKey, nil, OBJC_ASSOCIATION_RETAIN_NONATOMIC); }
+        @try {
+            [self setRightBarButtonItems:merged animated:animated];
+        } @finally {
+            objc_setAssociatedObject(self, &TGExtraManualReadRedirectKey, nil, OBJC_ASSOCIATION_RETAIN_NONATOMIC);
+        }
         return;
     }
     %orig;
