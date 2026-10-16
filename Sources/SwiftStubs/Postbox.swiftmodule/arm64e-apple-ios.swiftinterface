@@ -9,7 +9,12 @@ public protocol MessageAttribute : AnyObject {}
   public let namespace: Swift.UInt32
   public let id: Swift.Int64
   public init(_ value: Swift.Int64)
+  public static func decodeArrayFromBuffer(_ buffer: ReadBuffer) -> [PeerId]
 }
+public final class ReadBuffer {
+  public init(data: Foundation.Data)
+}
+public final class MultiplePeersView {}
 public struct MessageId {
   public init(peerId: PeerId, namespace: Swift.Int32, id: Swift.Int32)
   public static func decodeArrayFromData(_ data: Foundation.Data) -> [MessageId]
@@ -21,6 +26,7 @@ public final class Transaction {
   public func deleteMessages(_ ids: [MessageId], forEachMedia: ((any Media) -> Swift.Void)?)
 }
 public final class Postbox {
+  public func multiplePeersView(_ ids: [PeerId]) -> SwiftSignalKit.Signal<MultiplePeersView, SwiftSignalKit.NoError>
   public func messagesAtIds(_ ids: [MessageId]) -> SwiftSignalKit.Signal<[Message], SwiftSignalKit.NoError>
   public func transaction<T>(userInteractive: Swift.Bool, ignoreDisabled: Swift.Bool, _ f: @escaping (Transaction) -> T, file: Swift.String, line: Swift.Int) -> SwiftSignalKit.Signal<T, SwiftSignalKit.NoError>
 }

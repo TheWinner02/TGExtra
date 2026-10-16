@@ -77,6 +77,20 @@ jobs:
                 swiftc Sources/tgapi/AccountAvatarPolicy.swift scripts/test-account-avatar.swift -o "$RUNNER_TEMP/tgextra-avatar-tests"
                 "$RUNNER_TEMP/tgextra-avatar-tests"
 
+            - name: Test native avatar batch ABI
+              shell: bash
+              run: |
+                fixture="$RUNNER_TEMP/tgextra-avatar-abi"
+                mkdir -p "$fixture/native" "$fixture/stub"
+                swiftc -module-name SwiftSignalKit -emit-library -emit-module scripts/avatar-signal-abi-fixture.swift -emit-module-path "$fixture/native/SwiftSignalKit.swiftmodule" -o "$fixture/native/libSwiftSignalKit.dylib"
+                swiftc -module-name Postbox -enable-library-evolution -emit-library -emit-module -I "$fixture/native" -L "$fixture/native" -lSwiftSignalKit scripts/avatar-postbox-abi-fixture.swift -emit-module-path "$fixture/native/Postbox.swiftmodule" -o "$fixture/native/libPostbox.dylib"
+                target="$(uname -m)-apple-macosx14.0"
+                for module in SwiftSignalKit Postbox; do
+                  sed "s/arm64-apple-ios14.0/$target/g" "Sources/SwiftStubs/$module.swiftmodule/arm64-apple-ios.swiftinterface" > "$fixture/stub/$module.swiftinterface"
+                done
+                swiftc -parse-as-library -I "$fixture/stub" Sources/tgapi/AccountAvatarPolicy.swift Sources/tgapi/RetainedMessageIdentity.swift Sources/tgapi/RetainedMessageArchive.swift scripts/test-avatar-batch-abi.swift -L "$fixture/native" -lPostbox -lSwiftSignalKit -Xlinker -rpath -Xlinker "$fixture/native" -o "$fixture/test"
+                "$fixture/test"
+
             - name: Fetch Theos
               uses: actions/checkout@v7
               with:

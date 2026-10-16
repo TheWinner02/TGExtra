@@ -55,6 +55,7 @@
 - (void)viewWillDisappear:(BOOL)animated {
     [super viewWillDisappear:animated];
     ++self.headerImageGeneration;
+    [TGExtraDeletedMessageCleaner cancelAccountAvatarForUI:self];
 }
 
 - (void)didChangeFakeLocation {

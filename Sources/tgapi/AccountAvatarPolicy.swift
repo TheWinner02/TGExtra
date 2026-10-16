@@ -2,6 +2,31 @@ import Foundation
 
 // Primitive reflection only: never call PeerId/resource getters through stubs.
 enum AccountAvatarPolicy {
+    // Pass opaque arrays between native APIs, never construct/index scalar
+    // PeerId values using the layout-only compatibility stub.
+    static func encodedPeerIds(_ key: String) -> Data? {
+        guard let packed = Int64(key), packed > 0 else { return nil }
+        let bits = UInt64(packed)
+        let raw = (bits & 0xffffffff) | ((bits >> 35) << 32)
+        guard raw > 0, raw < (UInt64(1) << 56) else { return nil }
+        var count = Int32(1).littleEndian
+        var id = packed.littleEndian
+        var data = Data()
+        withUnsafeBytes(of: &count) { data.append(contentsOf: $0) }
+        withUnsafeBytes(of: &id) { data.append(contentsOf: $0) }
+        return data
+    }
+
+    static func profileResourceIds(in profile: Any, accountPeer: String) -> [String]? {
+        guard let id = stored("id", in: profile), peerKey(id) == accountPeer,
+              let photo = stored("photo", in: profile),
+              Mirror(reflecting: photo).displayStyle == .collection else { return nil }
+        var result: [String] = []
+        for item in Mirror(reflecting: photo).children.prefix(16) {
+            if let id = resourceId(forRepresentation: item.value), !result.contains(id) { result.append(id) }
+        }
+        return result
+    }
     static func stored(_ name: String, in value: Any) -> Any? {
         var mirror: Mirror? = Mirror(reflecting: value)
         while let current = mirror {
@@ -63,8 +88,12 @@ enum AccountAvatarPolicy {
         guard fields.count >= 4, peerKey(fields[0].value) == accountPeer else { return nil }
         let optional = Mirror(reflecting: fields[3].value)
         let representation: Any? = optional.displayStyle == .optional ? optional.children.first?.value : fields[3].value
-        guard let representation,
-              let resource = stored("resource", in: representation),
+        guard let representation else { return nil }
+        return resourceId(forRepresentation: representation)
+    }
+
+    static func resourceId(forRepresentation representation: Any) -> String? {
+        guard let resource = stored("resource", in: representation),
               String(reflecting: type(of: resource)).contains("CloudPeerPhotoSizeMediaResource"),
               let dc = stored("datacenterId", in: resource) as? Int, dc > 0,
               let spec = stored("sizeSpec", in: resource) else { return nil }

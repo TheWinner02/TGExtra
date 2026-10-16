@@ -15,6 +15,7 @@ struct AccountAvatarTests {
         let localId: Int32?
     }
     struct Representation { let resource: CloudPeerPhotoSizeMediaResource }
+    struct User { let id: PeerId; let photo: [Representation] }
     enum State {
         case empty
         case peerAvatar(PeerId, Int?, [String], Representation?, Int, Int?)
@@ -44,6 +45,12 @@ struct AccountAvatarTests {
             precondition(!AccountAvatarPolicy.validResourceId(invalid))
         }
         let full = Representation(resource: CloudPeerPhotoSizeMediaResource(datacenterId: 2, photoId: 999, sizeSpec: .fullSize, volumeId: nil, localId: nil))
+        precondition(AccountAvatarPolicy.encodedPeerIds("123") == Data([1, 0, 0, 0, 123, 0, 0, 0, 0, 0, 0, 0]))
+        precondition(AccountAvatarPolicy.encodedPeerIds("0") == nil)
+        precondition(AccountAvatarPolicy.encodedPeerIds("invalid") == nil)
+        precondition(AccountAvatarPolicy.profileResourceIds(in: User(id: owner, photo: [full, full]), accountPeer: key) == ["telegram-peer-photo-size-2-999-1-0-0"])
+        precondition(AccountAvatarPolicy.profileResourceIds(in: User(id: other, photo: [full]), accountPeer: key) == nil)
+        precondition(AccountAvatarPolicy.profileResourceIds(in: User(id: owner, photo: []), accountPeer: key) == [])
         let state = State.peerAvatar(owner, nil, ["A"], full, 0, nil)
         precondition(AccountAvatarPolicy.resourceId(in: Content(params: nil, state: state), accountPeer: key) == "telegram-peer-photo-size-2-999-1-0-0")
         precondition(AccountAvatarPolicy.resourceId(in: Content(params: nil, state: .peerAvatar(other, nil, [], full, 0, nil)), accountPeer: key) == nil)

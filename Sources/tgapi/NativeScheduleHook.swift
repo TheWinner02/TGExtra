@@ -259,6 +259,7 @@ class TGExtraDeletedMessageCleaner: NSObject {
     private static var clearing = false
     private static var cleanupDisposable: Disposable?
     private static var uiAccountKey: UInt8 = 0
+    private static var uiAvatarLoadKey: UInt8 = 0
     // Full native IDs observed in chat, scoped by database, never by raw ID alone.
     private static var observedIds: [String: [String: MessageId]] = [:]
     private static var readStatus: [String: String] = [:]
@@ -360,9 +361,17 @@ class TGExtraDeletedMessageCleaner: NSObject {
         return "Account aperto: \(count) messaggi registrati; \(observed) ID completi letti dalle chat. " + (readStatus[path] ?? "Nessuna cella acquisita.")
     }
 
+    @objc(cancelAccountAvatarForUI:)
+    static func cancelAccountAvatar(_ ui: UIViewController) {
+        precondition(Thread.isMainThread)
+        (objc_getAssociatedObject(ui, &uiAvatarLoadKey) as? RetainedArchiveLoad)?.cancel()
+        objc_setAssociatedObject(ui, &uiAvatarLoadKey, nil, .OBJC_ASSOCIATION_RETAIN_NONATOMIC)
+    }
+
     @objc(loadAccountAvatarForUI:completion:)
     static func loadAccountAvatar(_ ui: UIViewController, completion: @escaping (UIImage?, String) -> Void) {
         precondition(Thread.isMainThread)
+        cancelAccountAvatar(ui)
         // Diagnostics contain counts and failure stages only: no account IDs,
         // photo resource IDs, paths, or message contents.
         func finish(_ image: UIImage?, _ status: String) {
@@ -385,74 +394,83 @@ class TGExtraDeletedMessageCleaner: NSObject {
               let basePath = nativeStoredValue(named: "basePath", in: mediaBox) as? String else {
             finish(nil, "Fallback: percorso MediaBox non leggibile; account riconosciuto."); return
         }
-        // Inspect already-loaded views only, once when the menu opens. No avatar
-        // hooks, no global account image cache, and no arbitrary chat screenshots.
-        var pending = nativeApplicationWindows().filter { !$0.isHidden }.map { $0 as UIView }
-        var controllers = nativeAllVisibleControllers()
-        var seenControllers = Set<ObjectIdentifier>()
-        while let controller = controllers.popLast(), seenControllers.count < 200 {
-            guard seenControllers.insert(ObjectIdentifier(controller)).inserted else { continue }
-            if let view = controller.viewIfLoaded { pending.append(view) }
-            controllers.append(contentsOf: controller.children)
-            if let tabs = controller as? UITabBarController { controllers.append(contentsOf: tabs.viewControllers ?? []) }
-            if let nav = controller as? UINavigationController { controllers.append(contentsOf: nav.viewControllers) }
+        let symbols = [
+            "$s7Postbox6PeerIdV21decodeArrayFromBufferySayACGAA04ReadG0CFZ",
+            "$s7Postbox10ReadBufferC4dataAC10Foundation4DataV_tcfC",
+            "$s7Postbox17MultiplePeersViewCMa",
+            "$s7PostboxAAC17multiplePeersViewy14SwiftSignalKit0F0CyAA08MultiplecD0CAD7NoErrorOGSayAA6PeerIdVGF"
+        ]
+        guard symbols.allSatisfy({ dlsym(telegramCoreHandle, $0) != nil || dlsym(nil, $0) != nil }),
+              let data = AccountAvatarPolicy.encodedPeerIds(ownPeer) else {
+            finish(nil, "Fallback: API profilo batch non disponibile nel client."); return
         }
-        let selector = NSSelectorFromString("asyncdisplaykit_node")
-        var seen = Set<ObjectIdentifier>()
-        var resources: [String] = []
-        var nodes = 0
-        var avatars = 0
-        var rejected: [String: Int] = [:]
-        while let view = pending.popLast(), seen.count < 4000 {
-            guard seen.insert(ObjectIdentifier(view)).inserted else { continue }
-            pending.append(contentsOf: view.subviews)
-            guard view.responds(to: selector),
-                  let node = view.perform(selector)?.takeUnretainedValue() else { continue }
-            nodes += 1
-            guard String(reflecting: type(of: node)).contains("AvatarNode") else { continue }
-            avatars += 1
-            if let id = AccountAvatarPolicy.resourceId(in: node, accountPeer: ownPeer) {
-                if !resources.contains(id) { resources.append(id) }
-            } else {
-                let reason = AccountAvatarPolicy.rejectionReason(in: node, accountPeer: ownPeer)
-                rejected[reason, default: 0] += 1
-            }
-        }
-        let reasons = rejected.keys.sorted().map { "\($0): \(rejected[$0]!)" }.joined(separator: "; ")
-        let scan = "Account riconosciuto. Viste: \(seen.count); nodi: \(nodes); avatar: \(avatars); risorse: \(resources.count)." +
-            (pending.isEmpty ? "" : " Limite scansione raggiunto.") + (reasons.isEmpty ? "" : " \(reasons).")
-        guard !resources.isEmpty else { finish(nil, "\(scan) Fallback: nessuna foto propria recuperabile dalle viste caricate."); return }
-        let resourceIds = resources
-        DispatchQueue.global(qos: .utility).async {
-            let directory = URL(fileURLWithPath: basePath, isDirectory: true).resolvingSymlinksInPath()
-            var image: UIImage?
-            var missing = 0
-            var invalid = 0
-            var unreadable = 0
-            for id in resourceIds {
-                let file = directory.appendingPathComponent(id).resolvingSymlinksInPath()
-                guard file.deletingLastPathComponent().path == directory.path else { invalid += 1; continue }
-                guard let attributes = try? FileManager.default.attributesOfItem(atPath: file.path) else { missing += 1; continue }
-                guard let size = attributes[.size] as? NSNumber, size.intValue > 0, size.intValue <= 4 * 1024 * 1024 else { invalid += 1; continue }
-                guard let source = CGImageSourceCreateWithURL(file as CFURL, nil) else { unreadable += 1; continue }
-                let options: [String: Any] = [
-                    kCGImageSourceCreateThumbnailFromImageAlways as String: true,
-                    kCGImageSourceCreateThumbnailWithTransform as String: true,
-                    kCGImageSourceThumbnailMaxPixelSize as String: 400,
-                    kCGImageSourceShouldCacheImmediately as String: true
-                ]
-                if let thumbnail = CGImageSourceCreateThumbnailAtIndex(source, 0, options as CFDictionary) {
-                    image = UIImage(cgImage: thumbnail)
-                    break
+        let request = RetainedArchiveLoad()
+        objc_setAssociatedObject(ui, &uiAvatarLoadKey, request, .OBJC_ASSOCIATION_RETAIN_NONATOMIC)
+        let readCache: ([String]) -> Void = { [weak ui, weak request] resourceIds in
+            guard let request else { return }
+            let scan = "Profilo letto dal database dell'account. Risorse foto: \(resourceIds.count)."
+            guard !resourceIds.isEmpty else { finish(nil, "\(scan) Fallback: foto assente o formato risorsa non supportato."); return }
+            DispatchQueue.global(qos: .utility).async {
+                let directory = URL(fileURLWithPath: basePath, isDirectory: true).resolvingSymlinksInPath()
+                var image: UIImage?
+                var missing = 0
+                var invalid = 0
+                var unreadable = 0
+                for id in resourceIds {
+                    let file = directory.appendingPathComponent(id).resolvingSymlinksInPath()
+                    guard file.deletingLastPathComponent().path == directory.path else { invalid += 1; continue }
+                    guard let attributes = try? FileManager.default.attributesOfItem(atPath: file.path) else { missing += 1; continue }
+                    guard let size = attributes[.size] as? NSNumber, size.intValue > 0, size.intValue <= 4 * 1024 * 1024 else { invalid += 1; continue }
+                    guard let source = CGImageSourceCreateWithURL(file as CFURL, nil) else { unreadable += 1; continue }
+                    let options: [String: Any] = [
+                        kCGImageSourceCreateThumbnailFromImageAlways as String: true,
+                        kCGImageSourceCreateThumbnailWithTransform as String: true,
+                        kCGImageSourceThumbnailMaxPixelSize as String: 400,
+                        kCGImageSourceShouldCacheImmediately as String: true
+                    ]
+                    if let thumbnail = CGImageSourceCreateThumbnailAtIndex(source, 0, options as CFDictionary) {
+                        image = UIImage(cgImage: thumbnail)
+                        break
+                    }
+                    unreadable += 1
                 }
-                unreadable += 1
+                let result = image
+                let status = scan + (image != nil ? " Foto caricata dalla cache." : " Fallback cache: assenti/inaccessibili \(missing); file non validi \(invalid); immagini non decodificabili \(unreadable).")
+                DispatchQueue.main.async { [weak ui] in
+                    guard let ui, objc_getAssociatedObject(ui, &uiAvatarLoadKey) as? RetainedArchiveLoad === request,
+                          objc_getAssociatedObject(ui, &uiAccountKey) as? String == path else { return }
+                    finish(result, status)
+                }
             }
-            let result = image
-            let status = scan + (image != nil ? " Foto caricata dalla cache." : " Fallback cache: assenti/inaccessibili \(missing); file non validi \(invalid); immagini non decodificabili \(unreadable).")
-            DispatchQueue.main.async { [weak ui] in
-                guard let ui, objc_getAssociatedObject(ui, &uiAccountKey) as? String == path else { return }
-                finish(result, status)
+        }
+        // The native decoder creates the native array; pass it directly to the
+        // native batch API. Never index it or call scalar PeerId APIs via stubs.
+        let ids = PeerId.decodeArrayFromBuffer(ReadBuffer(data: data))
+        let signal = account.1.multiplePeersView(ids)
+        request.track(signal.start(next: { [weak ui, weak request] view in
+            DispatchQueue.main.async { [weak ui, weak request] in
+                guard let ui, let request, !request.cancelled,
+                      objc_getAssociatedObject(ui, &uiAvatarLoadKey) as? RetainedArchiveLoad === request,
+                      objc_getAssociatedObject(ui, &uiAccountKey) as? String == path else { return }
+                request.cancel() // One snapshot, not a persistent peer subscription.
+                guard let storage = nativeStoredValue(named: "peers", in: view),
+                      let profile = RetainedMessageArchive.peerValues(in: storage).first(where: {
+                          guard let id = nativeStoredValue(named: "id", in: $0) else { return false }
+                          return AccountAvatarPolicy.peerKey(id) == ownPeer
+                      }) else {
+                    finish(nil, "Fallback: profilo proprio non trovato nel database locale."); return
+                }
+                guard let resources = AccountAvatarPolicy.profileResourceIds(in: profile, accountPeer: ownPeer) else {
+                    finish(nil, "Fallback: campi del profilo proprio non leggibili."); return
+                }
+                readCache(resources)
             }
+        }, error: nil, completed: nil))
+        DispatchQueue.main.asyncAfter(deadline: .now() + 5) { [weak ui, weak request] in
+            guard let ui, let request, !request.cancelled,
+                  objc_getAssociatedObject(ui, &uiAvatarLoadKey) as? RetainedArchiveLoad === request else { return }
+            request.cancel()
+            finish(nil, "Fallback: lettura profilo locale scaduta dopo 5 secondi.")
         }
     }
 
