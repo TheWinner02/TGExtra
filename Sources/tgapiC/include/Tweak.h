@@ -4,8 +4,8 @@
 extern "C" {
 #endif
 
-int TGExtraRebindSymbol(const char *symbolName, void *replacement, void **original);
-int TGExtraDynamicInterpose(void *replacee, void *replacement);
+int TGExtraRebindSymbol(const char * _Nonnull symbolName, void * _Nonnull replacement, void * _Nullable * _Nullable original);
+int TGExtraDynamicInterpose(void * _Nonnull replacee, void * _Nonnull replacement);
 
 #ifdef __cplusplus
 }

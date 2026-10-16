@@ -157,7 +157,7 @@
 /* Extras */
 "MANUAL_READ_ACTION" = "Segna come letta questa chat o questo topic";
 "MANUAL_READ_TITLE" = "Conferma di lettura";
-"MANUAL_READ_HINT" = "Usa l'occhio accanto all'avatar della chat per inviare una conferma di lettura singola. Dentro un topic viene segnato come letto solo quel topic.";
+"MANUAL_READ_HINT" = "Usa l'occhio accanto all'avatar della chat per inviare una conferma di lettura singola. Dentro un topic viene segnato come letto solo quel topic. Nelle chat private Telegram potrebbe mostrarti brevemente online al mittente quando confermi la lettura.";
 "MANUAL_READ_UNSUPPORTED" = "Non è possibile identificare questa chat in sicurezza. Le chat segrete e i sotto-thread dei Messaggi salvati non sono supportati.";
 "MANUAL_READ_LOOKUP_ERROR" = "Non è stato possibile leggere i dati locali della chat. Riapri la chat e riprova.";
 "MANUAL_READ_TRANSPORT_UNAVAILABLE" = "Il servizio di connessione dell'account non è disponibile. Riapri la chat e riprova.";

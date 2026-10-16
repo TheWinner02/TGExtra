@@ -155,7 +155,7 @@
 /* Extras */
 "MANUAL_READ_ACTION" = "Mark this chat or topic as read";
 "MANUAL_READ_TITLE" = "Read confirmation";
-"MANUAL_READ_HINT" = "Use the eye beside the chat avatar to send a one-time read confirmation. In a topic, only that topic is marked as read.";
+"MANUAL_READ_HINT" = "Use the eye beside the chat avatar to send a one-time read confirmation. In a topic, only that topic is marked as read. Telegram may briefly show you online to the sender when you confirm reading in a private chat.";
 "MANUAL_READ_UNSUPPORTED" = "This chat cannot be identified safely. Secret chats and Saved Messages subthreads are not supported.";
 "MANUAL_READ_LOOKUP_ERROR" = "Could not read the chat data locally. Open the chat again and retry.";
 "MANUAL_READ_TRANSPORT_UNAVAILABLE" = "The account's connection service is not available. Reopen the chat and retry.";
