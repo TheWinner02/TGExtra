@@ -163,6 +163,7 @@
 "MANUAL_READ_LOOKUP_ERROR" = "Could not read the chat data locally. Open the chat again and retry.";
 "MANUAL_READ_TRANSPORT_UNAVAILABLE" = "The account's connection service is not available. Reopen the chat and retry.";
 "MANUAL_READ_SERVER_ERROR" = "Telegram did not confirm the read request. Read hiding remains enabled; you can retry.";
+"MANUAL_READ_UNVERIFIED" = "The request was sent, but its response could not be interpreted. Reading may already have been applied. Automatic read hiding remains enabled.";
 "MANUAL_READ_TIMEOUT" = "No confirmation received within 15 seconds. The request may already have reached Telegram; you can retry.";
 "MANUAL_READ_PENDING" = "Preparing a one-time read confirmation…";
 "MANUAL_READ_DONE" = "Read confirmation accepted by Telegram. Automatic read hiding remains enabled.";

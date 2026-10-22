@@ -11,6 +11,10 @@ private final class ManualReadButtonState: NSObject {
     var load: RetainedArchiveLoad?
     var operation = UUID()
     var busy = false
+    var navigationPending = ManualReadNavigation.Pending<UIBarButtonItem>()
+    var navigationScheduled = false
+    var navigationApplying = false
+    var navigationGeneration: UInt = 0
 
     init(controller: UIViewController) {
         self.controller = controller
@@ -25,6 +29,11 @@ private final class ManualReadButtonState: NSObject {
         busy = false
         item.isEnabled = true
         item.image = UIImage(systemName: "eye")
+    }
+    func cancelNavigation() {
+        navigationGeneration &+= 1
+        navigationPending.cancel()
+        navigationScheduled = false
     }
     @objc private func tapped() {
         guard let controller, !busy else { return }
@@ -46,6 +55,7 @@ final class TGExtraManualReadController: NSObject {
         if !UserDefaults.standard.bool(forKey: preference) {
             if let old {
                 old.cancel()
+                old.cancelNavigation()
                 // Detach first, otherwise the setter hook would restore the eye.
                 objc_setAssociatedObject(controller.navigationItem, &navigationStateKey, nil, .OBJC_ASSOCIATION_RETAIN_NONATOMIC)
                 let items = controller.navigationItem.rightBarButtonItems ?? controller.navigationItem.rightBarButtonItem.map { [$0] } ?? []
@@ -70,18 +80,45 @@ final class TGExtraManualReadController: NSObject {
         }
     }
 
-    @objc(rightItemsForNavigationItem:proposedItems:)
-    static func rightItems(_ item: UINavigationItem, proposedItems: [UIBarButtonItem]) -> [UIBarButtonItem]? {
+    @objc(queueRightItemsForNavigationItem:proposedItems:)
+    static func queueRightItems(_ item: UINavigationItem, proposedItems: [UIBarButtonItem]) -> Bool {
         guard Thread.isMainThread,
               let state = objc_getAssociatedObject(item, &navigationStateKey) as? ManualReadButtonState,
               state.controller?.navigationItem === item,
-              UserDefaults.standard.bool(forKey: preference) else { return nil }
-        return ManualReadNavigation.items(proposedItems, eye: state.item)
+              UserDefaults.standard.bool(forKey: preference), !state.navigationApplying else { return false }
+        let merged = ManualReadNavigation.items(proposedItems, eye: state.item)
+        let current = item.rightBarButtonItems ?? item.rightBarButtonItem.map { [$0] } ?? []
+        if !state.navigationScheduled && ManualReadNavigation.identical(current, merged) { return true }
+        state.navigationPending.stage(merged)
+        if state.navigationScheduled { return true }
+        state.navigationScheduled = true
+        let generation = state.navigationGeneration
+        // Native typing updates may clear the array and set the avatar again in
+        // the same turn. Render only the final list, without fading the island.
+        DispatchQueue.main.async { [weak item, weak state] in
+            guard let item, let state, state.navigationGeneration == generation else { return }
+            state.navigationScheduled = false
+            guard let latest = state.navigationPending.take(),
+                  state.controller?.navigationItem === item,
+                  objc_getAssociatedObject(item, &navigationStateKey) as? ManualReadButtonState === state,
+                  UserDefaults.standard.bool(forKey: preference) else { return }
+            let current = item.rightBarButtonItems ?? item.rightBarButtonItem.map { [$0] } ?? []
+            guard !ManualReadNavigation.identical(current, latest) else { return }
+            state.navigationApplying = true
+            defer { state.navigationApplying = false }
+            UIView.performWithoutAnimation {
+                item.setRightBarButtonItems(latest, animated: false)
+            }
+        }
+        return true
     }
 
     @objc(hideForController:)
     static func hide(_ controller: UIViewController) {
-        (objc_getAssociatedObject(controller, &stateKey) as? ManualReadButtonState)?.cancel()
+        if let state = objc_getAssociatedObject(controller, &stateKey) as? ManualReadButtonState {
+            state.cancel()
+            state.cancelNavigation()
+        }
     }
 
     @objc(refreshButtons)

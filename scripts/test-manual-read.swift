@@ -67,6 +67,23 @@ struct ManualReadTests {
         let duplicates = ManualReadNavigation.items([eye, avatar, eye], eye: eye)
         precondition(duplicates.count == 2 && duplicates[0] === avatar && duplicates[1] === eye)
         precondition(replaced.filter { $0 !== eye }.count == 2, "Disabling must preserve the newest native buttons")
+        precondition(ManualReadNavigation.identical(first, repeated))
+        precondition(!ManualReadNavigation.identical(first, replaced))
+        var pending = ManualReadNavigation.Pending<Button>()
+        pending.stage(ManualReadNavigation.items([], eye: eye))
+        pending.stage(ManualReadNavigation.items([avatar], eye: eye))
+        precondition(ManualReadNavigation.identical(pending.take()!, first), "An intermediate clear must not make the avatar blink")
+        precondition(pending.take() == nil, "Apply only once per batch")
+        pending.stage(replaced)
+        pending.cancel()
+        precondition(pending.take() == nil, "Dismissal/disable must cancel stale navigation updates")
+        var navigationWrites = 0
+        for _ in 0..<100 {
+            pending.stage(ManualReadNavigation.items([], eye: eye))
+            pending.stage(ManualReadNavigation.items([avatar], eye: eye))
+            if let final = pending.take(), !ManualReadNavigation.identical(final, first) { navigationWrites += 1 }
+        }
+        precondition(navigationWrites == 0, "Typing updates with an unchanged final list must not rebuild/fade the island")
         print("Manual read: peer types, topic isolation, ownership, access hashes and TL payloads passed")
     }
 }

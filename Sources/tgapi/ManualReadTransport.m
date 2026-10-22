@@ -1,6 +1,7 @@
 #import "Headers.h"
 #import "UI/Headers.h"
 #import <objc/runtime.h>
+#import "ManualReadResponse.h"
 
 @interface MTRequestMessageService : NSObject
 - (void)addRequest:(MTRequest *)request;
@@ -42,9 +43,13 @@ static char TGExtraManualReadPayloadKey;
         return;
     }
     MTRequest *request = [[requestClass alloc] init];
+    uint32_t requestFunction = 0;
+    if (payload.length >= 4) [payload getBytes:&requestFunction length:4];
     objc_setAssociatedObject(request, &TGExtraManualReadPayloadKey, [payload copy], OBJC_ASSOCIATION_RETAIN_NONATOMIC);
     [request setPayload:payload metadata:@"TGExtra.manualRead" shortMetadata:@"manualRead"
-        responseParser:^id(NSData *data) { return data; }];
+        responseParser:^id(NSData *data) {
+            return [TGExtraManualReadResponse decodeData:data requestFunction:requestFunction];
+        }];
     request.needsTimeoutTimer = YES;
     __block BOOL finished = NO;
     void (^finish)(NSString *) = ^(NSString *error) {
@@ -54,15 +59,24 @@ static char TGExtraManualReadPayloadKey;
     };
     request.completed = ^(id response, MTRequestResponseInfo *info, MTRpcError *error) {
         dispatch_async(dispatch_get_main_queue(), ^{
-            if (error) { finish([self textForKey:@"MANUAL_READ_SERVER_ERROR"]); return; }
-            if (![response isKindOfClass:NSData.class] || ((NSData *)response).length < 4) {
-                finish([self textForKey:@"MANUAL_READ_SERVER_ERROR"]); return;
+            NSString *(^details)(NSString *, NSString *) = ^NSString *(NSString *key, NSString *diagnostic) {
+                NSString *message = [NSString stringWithFormat:@"%@\n\n%@: %@", [self textForKey:key], [self textForKey:@"MANUAL_READ_DIAGNOSTIC"], diagnostic];
+                NSLog(@"[TGExtra Manual Read] request %08x: %@", requestFunction, diagnostic);
+                return message;
+            };
+            if (error) {
+                NSString *diagnostic = [NSString stringWithFormat:@"RPC error class %@", NSStringFromClass([error class])];
+                if ([error respondsToSelector:@selector(errorCode)]) diagnostic = [diagnostic stringByAppendingFormat:@", code %d", error.errorCode];
+                finish(details(@"MANUAL_READ_SERVER_ERROR", diagnostic)); return;
             }
-            int32_t constructor = 0;
-            [response getBytes:&constructor length:4];
-            BOOL valid = constructor == (int32_t)0x997275b5 ||
-                (constructor == (int32_t)0x84d19185 && ((NSData *)response).length == 12);
-            finish(valid ? nil : [self textForKey:@"MANUAL_READ_SERVER_ERROR"]);
+            TGExtraManualReadResponse *decoded = nil;
+            if ([response isKindOfClass:TGExtraManualReadResponse.class]) decoded = response;
+            else if ([response isKindOfClass:NSData.class]) decoded = [TGExtraManualReadResponse decodeData:response requestFunction:requestFunction];
+            if (!decoded) {
+                finish(details(@"MANUAL_READ_UNVERIFIED", [NSString stringWithFormat:@"unexpected result class %@", response ? NSStringFromClass([response class]) : @"nil"])); return;
+            }
+            NSLog(@"[TGExtra Manual Read] request %08x: %@", requestFunction, decoded.diagnostic);
+            finish(decoded.accepted ? nil : details(@"MANUAL_READ_UNVERIFIED", decoded.diagnostic));
         });
     };
     __weak MTRequestMessageService *weakService = service;

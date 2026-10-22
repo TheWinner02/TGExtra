@@ -8,7 +8,7 @@
 + (void)updateForController:(UIViewController *)controller;
 + (void)hideForController:(UIViewController *)controller;
 + (void)refreshButtons;
-+ (NSArray<UIBarButtonItem *> *)rightItemsForNavigationItem:(UINavigationItem *)item proposedItems:(NSArray<UIBarButtonItem *> *)items;
++ (BOOL)queueRightItemsForNavigationItem:(UINavigationItem *)item proposedItems:(NSArray<UIBarButtonItem *> *)items;
 @end
 
 @interface TLParser : NSObject
@@ -50,6 +50,7 @@ void TGExtraRefreshStoryVisibility(void);
 #endif
 
 @interface MTRpcError : NSObject
+@property (nonatomic, readonly) int errorCode;
 - (id)initWithErrorCode:(int)code errorDescription:(id)desc;
 @end
 

@@ -98,6 +98,12 @@ jobs:
                 "$RUNNER_TEMP/tgextra-manual-read-tests"
                 plutil -lint TGExtra.bundle/en.lproj/Localizable.strings TGExtra.bundle/it.lproj/Localizable.strings
 
+            - name: Test manual read acknowledgements and errors
+              shell: bash
+              run: |
+                clang -fobjc-arc -framework Foundation Sources/tgapi/ManualReadResponse.m scripts/test-manual-read-response.m -lz -o "$RUNNER_TEMP/tgextra-read-response-tests"
+                "$RUNNER_TEMP/tgextra-read-response-tests"
+
             - name: Fetch Theos
               uses: actions/checkout@v7
               with:
