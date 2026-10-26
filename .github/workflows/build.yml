@@ -40,6 +40,12 @@ jobs:
                 swiftc Sources/tgapi/AdvertisementFilter.swift scripts/test-ad-filter.swift -o "$RUNNER_TEMP/tgextra-ad-tests"
                 "$RUNNER_TEMP/tgextra-ad-tests"
 
+            - name: Test spoiler recognition and protected media exclusions
+              shell: bash
+              run: |
+                swiftc Sources/tgapi/SpoilerPolicy.swift scripts/test-spoiler-policy.swift -o "$RUNNER_TEMP/tgextra-spoiler-tests"
+                "$RUNNER_TEMP/tgextra-spoiler-tests"
+
             - name: Test story decoration detection
               shell: bash
               run: |

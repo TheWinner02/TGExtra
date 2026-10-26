@@ -226,7 +226,7 @@ typedef NS_ENUM(NSInteger, TABLE_VIEW_SECTIONS) {
 		case READ_RECEIPT:
 		   return 2;
 		case MISC:
-		   return 11;
+		   return 12;
 		case FILE_FIXER:
 		   return 2;
 		case FAKE_LOCATION:
@@ -497,6 +497,10 @@ typedef NS_ENUM(NSInteger, TABLE_VIEW_SECTIONS) {
 			cell.detailTextLabel.text = status.length > 0
 				? [NSString stringWithFormat:@"%@\nDiagnostica: %@", subtitle, status]
 				: subtitle;
+		}
+		else if (indexPath.row == 11) {
+			cell.textLabel.text = TGLoc(@"REVEAL_SPOILERS_TITLE");
+			cell.detailTextLabel.text = TGLoc(@"REVEAL_SPOILERS_SUBTITLE");
 		}
 
 		UISwitch *toggle = (UISwitch *)cell.accessoryView;
@@ -770,6 +774,9 @@ typedef NS_ENUM(NSInteger, TABLE_VIEW_SECTIONS) {
         if ([switchKey isEqualToString:kHideStories]) {
             TGExtraRefreshStoryVisibility();
         }
+        if ([switchKey isEqualToString:kRevealSpoilers]) {
+            [TGExtraSpoilerController refresh];
+        }
     }
 }
 
@@ -813,6 +820,7 @@ typedef NS_ENUM(NSInteger, TABLE_VIEW_SECTIONS) {
                 case 8: return kHideStories;
                 case 9: return kAutomaticSchedule;
                 case 10: return kDefaultSilentMessages;
+                case 11: return kRevealSpoilers;
                 default: return nil;
             }
         case 3:

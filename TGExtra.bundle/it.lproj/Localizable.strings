@@ -96,6 +96,8 @@
 "CONFIRM_CALLS_SUBTITLE" = "Chiede conferma prima di avviare una chiamata audio o video.";
 
 "HIDE_STORIES_TITLE" = "Nascondi storie";
+"REVEAL_SPOILERS_TITLE" = "Spoiler sempre scoperti";
+"REVEAL_SPOILERS_SUBTITLE" = "Scopre automaticamente testo, foto e video con spoiler nelle chat. Non sblocca media a pagamento o temporanei. Disattivandolo, gli spoiler già scoperti restano visibili.";
 "HIDE_STORIES_SUBTITLE" = "Nasconde il carosello e gli indicatori delle storie in Telegram.";
 
 "AUTOMATIC_SCHEDULE_TITLE" = "Programmazione automatica";

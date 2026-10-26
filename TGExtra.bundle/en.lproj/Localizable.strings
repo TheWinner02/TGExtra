@@ -94,6 +94,8 @@
 "CONFIRM_CALLS_SUBTITLE" = "Ask for confirmation before starting an audio or video call.";
 
 "HIDE_STORIES_TITLE" = "Hide Stories";
+"REVEAL_SPOILERS_TITLE" = "Always Reveal Spoilers";
+"REVEAL_SPOILERS_SUBTITLE" = "Automatically reveal spoiler text, photos and videos in chats. Does not unlock paid or temporary media. Already revealed spoilers remain visible when disabled.";
 "HIDE_STORIES_SUBTITLE" = "Hide the stories carousel and story indicators throughout Telegram.";
 
 "AUTOMATIC_SCHEDULE_TITLE" = "Automatic Scheduling";

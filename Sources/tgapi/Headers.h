@@ -4,6 +4,11 @@
 #import "Constants.h"
 #import "../tgapiC/include/Tweak.h"
 
+@interface TGExtraSpoilerController : NSObject
++ (void)updateNode:(NSObject *)node;
++ (void)refresh;
+@end
+
 @interface TGExtraManualReadController : NSObject
 + (void)updateForController:(UIViewController *)controller;
 + (void)hideForController:(UIViewController *)controller;

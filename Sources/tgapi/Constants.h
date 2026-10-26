@@ -62,6 +62,7 @@
 #define kDisableScreenshotNotification @"TGExtraDisableScreenshotNotification"
 #define kConfirmCalls @"TGExtraConfirmCalls"
 #define kHideStories @"TGExtraHideStories"
+#define kRevealSpoilers @"TGExtraRevealSpoilers"
 #define kAutomaticSchedule @"TGExtraAutomaticSchedule"
 #define kDefaultSilentMessages @"TGExtraDefaultSilentMessages"
 

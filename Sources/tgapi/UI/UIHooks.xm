@@ -329,10 +329,23 @@ static void TGExtraFinishAutomaticScheduleUI(void) {
 	showUI();
 }
 
+- (void)didEnterVisibleState {
+    %orig;
+    NSString *name = NSStringFromClass(self.class);
+    if ([name hasSuffix:@"ChatMessageTextBubbleContentNode"] ||
+        [name hasSuffix:@"ChatMessageInteractiveMediaNode"]) {
+        [TGExtraSpoilerController updateNode:self];
+    }
+}
+
 - (void)layout {
     %orig;
 
     NSString *className = NSStringFromClass([self class]);
+    if ([className hasSuffix:@"ChatMessageTextBubbleContentNode"] ||
+        [className hasSuffix:@"ChatMessageInteractiveMediaNode"]) {
+        [TGExtraSpoilerController updateNode:self];
+    }
     BOOL isMessageNode = [className containsString:@"ChatMessage"] &&
         [className containsString:@"ItemNode"];
     BOOL hideAdvertisement = NO;

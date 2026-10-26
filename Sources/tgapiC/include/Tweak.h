@@ -14,6 +14,10 @@ int TGExtraDynamicInterpose(void * _Nonnull replacee, void * _Nonnull replacemen
 #import <Foundation/Foundation.h>
 
 NS_ASSUME_NONNULL_BEGIN
+@interface TGExtraSpoilerGestureBridge : NSObject
++ (BOOL)revealDust:(NSObject *)dust NS_SWIFT_NAME(revealDust(_:));
++ (BOOL)hasNoImage:(NSObject *)node NS_SWIFT_NAME(hasNoImage(_:));
+@end
 @interface TGExtraManualReadTransport : NSObject
 + (void)registerService:(id)service transport:(id)transport;
 + (BOOL)isAuthorizedRequest:(id)request payload:(NSData *)payload;
