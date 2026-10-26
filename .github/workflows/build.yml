@@ -59,11 +59,14 @@ jobs:
                 swiftc Sources/tgapi/StoryVisibility.swift scripts/test-story-visibility.swift -o "$RUNNER_TEMP/tgextra-story-tests"
                 "$RUNNER_TEMP/tgextra-story-tests"
 
-            - name: Test spoiler text redraw and mask ownership
+            - name: Test spoiler display formatting and outgoing input preservation
               shell: bash
               run: |
-                clang -fobjc-arc -framework Foundation -framework QuartzCore -framework CoreGraphics -I scripts/fixtures/spoiler-ui Sources/tgapi/SpoilerGestureBridge.m scripts/test-spoiler-render-bridge.m -o "$RUNNER_TEMP/tgextra-spoiler-render-tests"
-                "$RUNNER_TEMP/tgextra-spoiler-render-tests"
+                clang -fobjc-arc -framework Foundation -framework CoreFoundation Sources/tgapi/SpoilerTextRendering.m scripts/test-spoiler-text-rendering.m -o "$RUNNER_TEMP/tgextra-spoiler-text-tests"
+                "$RUNNER_TEMP/tgextra-spoiler-text-tests"
+                clang -fobjc-arc -c Sources/tgapi/SpoilerTextRendering.m -o "$RUNNER_TEMP/tgextra-spoiler-text.o"
+                swiftc -parse-as-library scripts/test-spoiler-text-rendering.swift "$RUNNER_TEMP/tgextra-spoiler-text.o" -o "$RUNNER_TEMP/tgextra-swift-spoiler-tests"
+                "$RUNNER_TEMP/tgextra-swift-spoiler-tests"
 
             - name: Test retained-message identity and decoder symbol
               shell: bash
