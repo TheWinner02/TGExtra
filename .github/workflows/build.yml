@@ -59,6 +59,12 @@ jobs:
                 swiftc Sources/tgapi/StoryVisibility.swift scripts/test-story-visibility.swift -o "$RUNNER_TEMP/tgextra-story-tests"
                 "$RUNNER_TEMP/tgextra-story-tests"
 
+            - name: Test spoiler text redraw and mask ownership
+              shell: bash
+              run: |
+                clang -fobjc-arc -framework Foundation -framework QuartzCore -framework CoreGraphics -I scripts/fixtures/spoiler-ui Sources/tgapi/SpoilerGestureBridge.m scripts/test-spoiler-render-bridge.m -o "$RUNNER_TEMP/tgextra-spoiler-render-tests"
+                "$RUNNER_TEMP/tgextra-spoiler-render-tests"
+
             - name: Test retained-message identity and decoder symbol
               shell: bash
               run: |

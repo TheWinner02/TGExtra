@@ -17,6 +17,10 @@ NS_ASSUME_NONNULL_BEGIN
 @interface TGExtraSpoilerGestureBridge : NSObject
 + (BOOL)revealDust:(NSObject *)dust NS_SWIFT_NAME(revealDust(_:));
 + (BOOL)hasNoImage:(NSObject *)node NS_SWIFT_NAME(hasNoImage(_:));
++ (void)finishTextDisplay:(NSObject *)node restoreAlpha:(BOOL)restoreAlpha ensureDisplay:(BOOL)ensureDisplay NS_SWIFT_NAME(finishTextDisplay(_:restoreAlpha:ensureDisplay:));
++ (BOOL)revealTextDust:(NSObject *)dust content:(NSObject *)text mask:(NSObject *)mask NS_SWIFT_NAME(revealTextDust(_:content:mask:));
++ (BOOL)shouldKeepTextVisible:(NSObject *)node;
++ (BOOL)shouldSkipMask:(nullable NSObject *)mask forView:(NSObject *)view;
 @end
 @interface TGExtraManualReadTransport : NSObject
 + (void)registerService:(id)service transport:(id)transport;

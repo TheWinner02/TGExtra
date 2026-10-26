@@ -79,6 +79,11 @@ void TGExtraRefreshStoryVisibility(void) {
 }
 
 %hook UIView
+- (void)setMaskView:(UIView *)mask {
+    if ([TGExtraSpoilerGestureBridge shouldSkipMask:mask forView:self]) mask = nil;
+    %orig(mask);
+}
+
 - (void)layoutSubviews {
     %orig;
     TGExtraApplyStoryVisibility(self, NSStringFromClass(self.class));
@@ -327,6 +332,11 @@ static void TGExtraFinishAutomaticScheduleUI(void) {
 %new
 - (void)__handle5PleTap {
 	showUI();
+}
+
+- (void)setAlpha:(CGFloat)alpha {
+    if ([TGExtraSpoilerGestureBridge shouldKeepTextVisible:self]) alpha = 1.0;
+    %orig(alpha);
 }
 
 - (void)didEnterVisibleState {
