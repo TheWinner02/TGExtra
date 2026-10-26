@@ -6,6 +6,7 @@
 
 @interface TGExtraSpoilerController : NSObject
 + (void)updateNode:(NSObject *)node;
++ (void)didEnterVisibleNode:(NSObject *)node;
 + (void)refresh;
 @end
 

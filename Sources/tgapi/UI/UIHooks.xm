@@ -344,7 +344,7 @@ static void TGExtraFinishAutomaticScheduleUI(void) {
     NSString *name = NSStringFromClass(self.class);
     if ([name hasSuffix:@"ChatMessageTextBubbleContentNode"] ||
         [name hasSuffix:@"ChatMessageInteractiveMediaNode"]) {
-        [TGExtraSpoilerController updateNode:self];
+        [TGExtraSpoilerController didEnterVisibleNode:self];
     }
 }
 

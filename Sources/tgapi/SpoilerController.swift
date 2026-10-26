@@ -17,6 +17,19 @@ final class TGExtraSpoilerController: NSObject {
     private static var stateKey: UInt8 = 0
     private static let nodes = NSHashTable<NSObject>.weakObjects()
 
+    @objc(didEnterVisibleNode:)
+    static func didEnterVisible(_ node: NSObject) {
+        guard Thread.isMainThread else { return }
+        // Texture may discard backing contents outside the visible range while
+        // retaining the same text and cached layout objects. Redraw once when
+        // the cell re-enters, not only when those object identities change.
+        if let state = objc_getAssociatedObject(node, &stateKey) as? SpoilerNodeState {
+            state.renderedText = nil
+            state.renderedLayout = nil
+        }
+        update(node)
+    }
+
     @objc(updateNode:)
     static func update(_ node: NSObject) {
         guard Thread.isMainThread else { return }
