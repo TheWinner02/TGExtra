@@ -353,12 +353,13 @@ class TGExtraDeletedMessageCleaner: NSObject {
     @objc(statusForUI:)
     static func statusForUI(_ ui: UIViewController) -> String {
         guard let path = objc_getAssociatedObject(ui, &uiAccountKey) as? String else {
-            return "Account aperto non identificato: apri una chat e riapri TGExtra."
+            return TGExtraManualReadTransport.text("RETAINED_ARCHIVE_ACCOUNT")
         }
         let records = UserDefaults.standard.array(forKey: recordsKey) as? [[String: Any]] ?? []
         let count = records.filter { ($0["account"] as? String) == path }.count
         let observed = (observedIds[path] ?? [:]).count
-        return "Account aperto: \(count) messaggi registrati; \(observed) ID completi letti dalle chat. " + (readStatus[path] ?? "Nessuna cella acquisita.")
+        if let detail = readStatus[path] { NSLog("[TGExtra Retained Messages] %@", detail) }
+        return String(format: TGExtraManualReadTransport.text("RETAINED_STATUS"), count, observed)
     }
 
     @objc(cancelAccountAvatarForUI:)
@@ -689,10 +690,10 @@ class TGExtraDeletedMessageCleaner: NSObject {
     private static func clear(_ ui: UIViewController, scope: RetainedChatCleanupScope?,
                               completion: @escaping (Int, Int, String?) -> Void) {
         precondition(Thread.isMainThread)
-        guard !clearing else { completion(0, 0, "Pulizia già in corso."); return }
+        guard !clearing else { completion(0, 0, TGExtraManualReadTransport.text("CLEANUP_BUSY")); return }
         guard let path = objc_getAssociatedObject(ui, &uiAccountKey) as? String,
               let account = retainedMessageAccounts().first(where: { $0.2 == path }) else {
-            completion(0, 0, "Apri una chat dell'account da pulire e riprova."); return
+            completion(0, 0, TGExtraManualReadTransport.text("CLEANUP_ACCOUNT_REQUIRED")); return
         }
         enrichRecords(path: path)
         let allRecords = UserDefaults.standard.array(forKey: recordsKey) as? [[String: Any]] ?? []
@@ -706,7 +707,7 @@ class TGExtraDeletedMessageCleaner: NSObject {
         guard !records.isEmpty else {
             if scope != nil { completion(0, 0, nil); return }
             let status = UserDefaults.standard.string(forKey: "TGExtraRetainedMessageStatus")
-            let error = status?.contains("non trovato") == true ? status : nil
+            let error = status?.contains("non trovato") == true ? TGExtraManualReadTransport.text("CLEANUP_ACCOUNT_REQUIRED") : nil
             completion(0, unresolved, error)
             return
         }
@@ -757,8 +758,9 @@ class TGExtraDeletedMessageCleaner: NSObject {
                 TLParser.forgetDeletedMessageIds(clearedIds.map { NSNumber(value: $0) })
                 clearing = false
                 let notFound = records.count - tokens.count
+                NSLog("[TGExtra Cleanup] %@", diagnostic)
                 let error = notFound > 0
-                    ? "Rimossi \(tokens.count) messaggi. Altri \(notFound) non individuati: registro e icone conservati.\n\nDiagnostica: \(diagnostic)"
+                    ? String(format: TGExtraManualReadTransport.text("CLEANUP_UNRESOLVED"), tokens.count, notFound)
                     : nil
                 cleanupDisposable = nil
                 completion(tokens.count, scope == nil ? unresolved : notFound, error)

@@ -1,3 +1,33 @@
+/* Localized diagnostic summaries */
+"DIAGNOSTIC_LOG_AVAILABLE" = "Technical details are available in the app log.";
+"SCHEDULE_STATUS_READY" = "Native scheduling hook is active; waiting for the next message.";
+"SCHEDULE_STATUS_DONE" = "Native scheduling completed; input interface restored.";
+"SCHEDULE_STATUS_UNAVAILABLE" = "No compatible native scheduling hook was found.";
+"ADS_BLOCKED_STATUS" = "An advertising request or placement was blocked.";
+"SILENT_APPLIED_STATUS" = "Silent sending has been applied.";
+"RECENT_RPC" = "Recent RPCs";
+"RETAINED_STATUS" = "Open account: %ld registered messages; %ld full message IDs read from chats.";
+
+/* TGExtra features and shared interface */
+"LANGUAGE_CHANGE" = "Change language";
+"ERROR_TITLE" = "Error";
+"LANGUAGE_LOAD_ERROR" = "Could not load the language data.";
+"LANGUAGE_APPLY_ERROR" = "Could not apply the selected language.";
+"CONFIRM_AUDIO_CALL" = "Start an audio call?";
+"CONFIRM_VIDEO_CALL" = "Start a video call?";
+"CALL_ACTION" = "Call";
+"CLEANUP_BUSY" = "Cleanup is already running.";
+"CLEANUP_ACCOUNT_REQUIRED" = "Open a chat in the account to clean, then retry.";
+"CLEANUP_UNRESOLVED" = "Removed %ld messages. Another %ld could not be found; registry entries and markers were kept.";
+"AVATAR_LOADING" = "Loading account profile photo…";
+"AVATAR_ACCOUNT" = "Account profile photo";
+"AVATAR_FALLBACK" = "Default profile image";
+"MAP_STANDARD" = "Map";
+"MAP_SATELLITE" = "Satellite";
+"MAP_HYBRID" = "Hybrid";
+"LOCATION_LAST_SELECTED" = "Last selected location";
+"LOCATION_SELECTED" = "Selected location";
+
 /* Sections */
 "GHOST_MODE_SECTION_HEADER" = "Ghost Mode";
 "READ_RECEIPT_SECTION_HEADER" = "Read Receipts";

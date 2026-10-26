@@ -34,6 +34,13 @@ jobs:
                 swiftc Sources/tgapi/AutomaticScheduleTiming.swift scripts/test-schedule-timing.swift -o "$RUNNER_TEMP/tgextra-timing-tests"
                 "$RUNNER_TEMP/tgextra-timing-tests"
 
+            - name: Test all supported translations
+              shell: bash
+              run: |
+                swiftc scripts/test-localizations.swift -parse-as-library -o "$RUNNER_TEMP/tgextra-localization-tests"
+                "$RUNNER_TEMP/tgextra-localization-tests"
+                plutil -lint TGExtra.bundle/*.lproj/Localizable.strings
+
             - name: Test advertisement detection
               shell: bash
               run: |

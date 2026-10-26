@@ -36,7 +36,7 @@
         self.languages = langs;
     }
 
-	self.title = @"Change Language";
+    self.title = [TGExtraLocalization localizedStringForKey:@"LANGUAGE_CHANGE"];
 	[self loadLanguages];
     [self setupTableView];
 }
@@ -127,7 +127,8 @@
     NSDictionary *dict = [NSDictionary dictionaryWithContentsOfFile:languageData[@"path"]];
 
     if (!dict) {
-        [self showAlertWithTitle:@"Error" message:@"Failed to load language localization data"];
+        [self showAlertWithTitle:[TGExtraLocalization localizedStringForKey:@"ERROR_TITLE"]
+                        message:[TGExtraLocalization localizedStringForKey:@"LANGUAGE_LOAD_ERROR"]];
         return;
     }
 
@@ -143,12 +144,14 @@
         [[NSUserDefaults standardUserDefaults] synchronize];
 
         [[NSNotificationCenter defaultCenter] postNotificationName:@"LanguageChangedNotification" object:nil];
+        self.title = [TGExtraLocalization localizedStringForKey:@"LANGUAGE_CHANGE"];
 
         [tableView deselectRowAtIndexPath:indexPath animated:YES];
 
         [tableView reloadData];
     } else {
-        [self showAlertWithTitle:@"Error" message:@"Failed to load the language."];
+        [self showAlertWithTitle:[TGExtraLocalization localizedStringForKey:@"ERROR_TITLE"]
+                        message:[TGExtraLocalization localizedStringForKey:@"LANGUAGE_APPLY_ERROR"]];
     }
 }
 
@@ -157,7 +160,7 @@
                                                                    message:message
                                                             preferredStyle:UIAlertControllerStyleAlert];
 
-    UIAlertAction *okAction = [UIAlertAction actionWithTitle:@"OK"
+    UIAlertAction *okAction = [UIAlertAction actionWithTitle:[TGExtraLocalization localizedStringForKey:@"OK"]
                                                        style:UIAlertActionStyleDefault
                                                      handler:nil];
 

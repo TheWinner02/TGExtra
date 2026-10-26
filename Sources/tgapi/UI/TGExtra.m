@@ -6,6 +6,21 @@
 
 #define TGLoc(key) [TGExtraLocalization localizedStringForKey:(key)]
 
+// Raw diagnostics are developer data, not localized interface strings. Keep
+// them in the app log and render a translated summary in the settings list.
+static NSString *TGDiagnosticSummary(NSString *status, NSString *key) {
+    NSLog(@"[TGExtra Diagnostics] %@", status);
+    return TGLoc(key);
+}
+
+static NSString *TGScheduleSummary(NSString *status) {
+    NSString *key = @"DIAGNOSTIC_LOG_AVAILABLE";
+    if ([status hasPrefix:@"Hook nativo attivo"]) key = @"SCHEDULE_STATUS_READY";
+    else if ([status hasPrefix:@"Programmazione nativa completata; UI ripristinata"]) key = @"SCHEDULE_STATUS_DONE";
+    else if ([status hasPrefix:@"Simbolo "] || [status hasPrefix:@"Hook nativo non trovato"]) key = @"SCHEDULE_STATUS_UNAVAILABLE";
+    return TGDiagnosticSummary(status, key);
+}
+
 @interface TGExtra ()
 @property (nonatomic, strong) UITableView *tableView;
 @property (nonatomic, strong) NSString *cacheSize;
@@ -42,13 +57,14 @@
     [super viewWillAppear:animated];
     NSUInteger generation = ++self.headerImageGeneration;
     self.headerIconView.image = self.fallbackHeaderImage;
-    self.avatarDiagnosticLabel.text = @"Diagnostica avatar: ricerca in corso…";
+    self.avatarDiagnosticLabel.text = TGLoc(@"AVATAR_LOADING");
     __weak TGExtra *weakSelf = self;
     [TGExtraDeletedMessageCleaner loadAccountAvatarForUI:self completion:^(UIImage *image, NSString *diagnostic) {
         TGExtra *strongSelf = weakSelf;
         if (!strongSelf || strongSelf.headerImageGeneration != generation) return;
         strongSelf.headerIconView.image = image ?: strongSelf.fallbackHeaderImage;
-        strongSelf.avatarDiagnosticLabel.text = [@"Diagnostica avatar: " stringByAppendingString:diagnostic];
+        strongSelf.avatarDiagnosticLabel.text = TGLoc(image ? @"AVATAR_ACCOUNT" : @"AVATAR_FALLBACK");
+        NSLog(@"[TGExtra Avatar] %@", diagnostic);
     }];
 }
 
@@ -384,7 +400,7 @@ typedef NS_ENUM(NSInteger, TABLE_VIEW_SECTIONS) {
 			cell.detailTextLabel.text = TGLoc(@"DISABLE_MESSAGE_READ_RECEIPT_SUBTITLE");
             cell.detailTextLabel.text = [cell.detailTextLabel.text stringByAppendingFormat:@"\n%@", TGLoc(@"MANUAL_READ_HINT")];
             NSString *manualReadStatus = [[NSUserDefaults standardUserDefaults] stringForKey:@"TGExtraManualReadStatus"];
-            if (manualReadStatus.length > 0) cell.detailTextLabel.text = [cell.detailTextLabel.text stringByAppendingFormat:@"\nDiagnostica: %@", manualReadStatus];
+            if (manualReadStatus.length > 0) cell.detailTextLabel.text = [cell.detailTextLabel.text stringByAppendingFormat:@"\n%@: %@", TGLoc(@"MANUAL_READ_DIAGNOSTIC"), TGDiagnosticSummary(manualReadStatus, @"DIAGNOSTIC_LOG_AVAILABLE")];
 		}
 		else if (indexPath.row == 1) {
 			cell.textLabel.text = TGLoc(@"DISABLE_STORY_READ_RECEIPT_TITLE");
@@ -426,7 +442,7 @@ typedef NS_ENUM(NSInteger, TABLE_VIEW_SECTIONS) {
 			NSString *cleanupStatus = [TGExtraDeletedMessageCleaner statusForUI:self];
 			if (cleanupStatus.length > 0) {
 				cell.detailTextLabel.text = [cell.detailTextLabel.text
-					stringByAppendingFormat:@"\nDiagnostica: %@", cleanupStatus];
+					stringByAppendingFormat:@"\n%@: %@", TGLoc(@"MANUAL_READ_DIAGNOSTIC"), cleanupStatus];
 			}
 			cell.imageView.image = [UIImage systemImageNamed:@"trash"];
 			cell.imageView.tintColor = UIColor.systemRedColor;
@@ -443,7 +459,7 @@ typedef NS_ENUM(NSInteger, TABLE_VIEW_SECTIONS) {
 			cell.detailTextLabel.text = TGLoc(@"DISABLE_ALL_ADS_SUBTITLE");
 			NSString *adStatus = [[NSUserDefaults standardUserDefaults] stringForKey:@"TGExtraAdsStatus"];
 			if (adStatus.length > 0) {
-				cell.detailTextLabel.text = [cell.detailTextLabel.text stringByAppendingFormat:@"\nDiagnostica: %@", adStatus];
+				cell.detailTextLabel.text = [cell.detailTextLabel.text stringByAppendingFormat:@"\n%@: %@", TGLoc(@"MANUAL_READ_DIAGNOSTIC"), TGDiagnosticSummary(adStatus, @"ADS_BLOCKED_STATUS")];
 			}
 		}
 		else if (indexPath.row == 1) {
@@ -476,12 +492,12 @@ typedef NS_ENUM(NSInteger, TABLE_VIEW_SECTIONS) {
 			NSString *status = [[NSUserDefaults standardUserDefaults] stringForKey:@"TGExtraAutomaticScheduleStatus"];
 			NSArray<NSNumber *> *ids = [[NSUserDefaults standardUserDefaults] arrayForKey:@"TGExtraAutomaticScheduleRecentIds"];
 			if (status.length > 0) {
-				NSMutableString *details = [NSMutableString stringWithFormat:@"%@\nDiagnostica: %@", subtitle, status];
+				NSMutableString *details = [NSMutableString stringWithFormat:@"%@\n%@: %@", subtitle, TGLoc(@"MANUAL_READ_DIAGNOSTIC"), TGScheduleSummary(status)];
 				if (ids.count > 0) {
 					NSMutableArray<NSString *> *values = [NSMutableArray arrayWithCapacity:ids.count];
 					for (NSNumber *value in ids) [values addObject:value.stringValue];
 					if (![status hasPrefix:@"Programmazione nativa"] && ![status hasPrefix:@"Hook nativo"]) {
-						[details appendFormat:@"\nRPC recenti: %@", [values componentsJoinedByString:@", "]];
+						[details appendFormat:@"\n%@: %@", TGLoc(@"RECENT_RPC"), [values componentsJoinedByString:@", "]];
 					}
 				}
 				cell.detailTextLabel.text = details;
@@ -495,7 +511,7 @@ typedef NS_ENUM(NSInteger, TABLE_VIEW_SECTIONS) {
 			NSString *status = [[NSUserDefaults standardUserDefaults]
 				stringForKey:@"TGExtraDefaultSilentStatus"];
 			cell.detailTextLabel.text = status.length > 0
-				? [NSString stringWithFormat:@"%@\nDiagnostica: %@", subtitle, status]
+				? [NSString stringWithFormat:@"%@\n%@: %@", subtitle, TGLoc(@"MANUAL_READ_DIAGNOSTIC"), TGDiagnosticSummary(status, @"SILENT_APPLIED_STATUS")]
 				: subtitle;
 		}
 		else if (indexPath.row == 11) {
@@ -625,7 +641,7 @@ typedef NS_ENUM(NSInteger, TABLE_VIEW_SECTIONS) {
 	if (indexPath.section == 5) { // Language
 		cell = [self normalCellFromTableView:tableView];
 		if (indexPath.row == 0) {
-			cell.textLabel.text = @"Change Language";
+			cell.textLabel.text = TGLoc(@"LANGUAGE_CHANGE");
 			cell.detailTextLabel.text = @"";
 			cell.imageView.image = [UIImage systemImageNamed:@"globe"];
 			cell.imageView.tintColor = [self dynamicColorBW];

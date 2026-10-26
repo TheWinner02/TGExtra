@@ -463,15 +463,16 @@ static void TGExtraFinishAutomaticScheduleUI(void) {
             }
 
             if (controller) {
-                NSString *title = isVideo ? @"Avviare la videochiamata?" : @"Avviare la chiamata?";
+                NSString *title = [TGExtraLocalization localizedStringForKey:
+                    isVideo ? @"CONFIRM_VIDEO_CALL" : @"CONFIRM_AUDIO_CALL"];
                 UIAlertController *alert = [UIAlertController
                     alertControllerWithTitle:title
                                      message:nil
                               preferredStyle:UIAlertControllerStyleAlert];
-                [alert addAction:[UIAlertAction actionWithTitle:@"Annulla"
+                [alert addAction:[UIAlertAction actionWithTitle:[TGExtraLocalization localizedStringForKey:@"CANCEL"]
                                                           style:UIAlertActionStyleCancel
                                                         handler:nil]];
-                [alert addAction:[UIAlertAction actionWithTitle:@"Chiama"
+                [alert addAction:[UIAlertAction actionWithTitle:[TGExtraLocalization localizedStringForKey:@"CALL_ACTION"]
                                                           style:UIAlertActionStyleDefault
                                                         handler:^(__unused UIAlertAction *action) {
                     %orig(controlEvents, event);
